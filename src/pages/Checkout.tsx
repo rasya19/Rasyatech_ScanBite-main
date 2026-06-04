@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom'; // <- TAMBAHIN BARIS INI DOANG
 import { 
   ArrowLeft, 
   CreditCard, 
@@ -133,76 +132,6 @@ export default function Checkout({ onNavigate, cart, setCart }: CheckoutProps) {
     return (localStorage.getItem('scanbite_lang') as 'id' | 'en') || 'id';
   });
 
-  const { tableNumber } = useParams();
-  useEffect(() => {
-  const lastTable = localStorage.getItem('scanbite_last_table');
-  if (tableNumber && lastTable!== tableNumber) {
-    localStorage.removeItem('scanbite_checkout_completed');
-    localStorage.removeItem('scanbite_completed_order_details');
-    setCheckoutCompleted(false);
-    setCompletedOrderDetails(null);
-  }
-  localStorage.setItem('scanbite_last_table', tableNumber || '');
-}, [tableNumber]);
-  // 1. STATE UTAMA TARUH PALING ATAS
-  const [customerName, setCustomerName] = useState('Pelanggan');
-  const [cafeName] = useState(() => localStorage.getItem('scanbite_cafe_name') || 'ScanBite');
-
-  const [bills, setBills] = useState<UserBill[]>(() => {
-    return computeBillsFromCart(cart, MENU_ITEMS);
-  });
-
-  // 2. VARIABEL TURUNAN LANGSUNG DI BAWAH bills
-  const unpaidBills = bills.filter((b) =>!b.isPaid);
-  const totalUnpaidGrandTotal = unpaidBills.reduce((sum: number, b: any) => sum + b.grandTotal, 0);
-
-  const [paymentModalUser, setPaymentModalUser] = useState<UserBill | null>(null);
-  const [showTreatAllModal, setShowTreatAllModal] = useState(false);
-  const [checkoutCompleted, setCheckoutCompleted] = useState<boolean>(() => {
-    return localStorage.getItem('scanbite_checkout_completed') === 'true';
-  });
-
-const [payMethod, setPayMethod] = useState<'qris' | 'cash'>('qris');
-const [cashAmount, setCashAmount] = useState<number>(0);
-const [cashInput, setCashInput] = useState<string>('');
-const [isSubmittingOrder, setIsSubmittingOrder] = useState(false); // <- BARU
-const [dbError, setDbError] = useState<string | null>(null); // <- BARU
-const [completedOrderDetails, setCompletedOrderDetails] = useState<any>(() => { // <- BARU
-  const saved = localStorage.getItem('scanbite_completed_order_details');
-  return saved ? JSON.parse(saved) : null;
-}); // <- BARU
-
-// 4. SEMUA FUNGSI TARUH DI SINI, DI ATAS return
-const handlePayAllBills = async () => {
-  const totalVal = totalUnpaidGrandTotal;
-  const userChange = payMethod === 'cash' ? Math.max(0, cashAmount - totalVal) : 0;
-
-  // Mark ALL bills as paid simultaneously
-  const updatedBills = bills.map((b) => ({ 
-    ...b, 
-    isPaid: true,
-    payMethod: payMethod,
-    cashAmount: payMethod === 'cash' ? cashAmount : 0,
-    changeAmount: userChange
-  }));
-  setBills(updatedBills);
-  setShowTreatAllModal(false);
-  
-  await registerCompletedOrder(updatedBills, `${customerName} (Traktir Se-Meja)`);
-};
-
-  // Jukebox State - LENGKAPIN SEMUA BIAR NGGAK ERROR
-  const [jukeboxSearch, setJukeboxSearch] = useState('');
-  const [filteredSongs, setFilteredSongs] = useState<JukeboxTrack[]>([]);
-  const [jukeboxProvider, setJukeboxProvider] = useState('youtube');
-  const [jukeboxManualTitle, setJukeboxManualTitle] = useState(''); // <- ini yg error tadi
-  const [jukeboxManualArtist, setJukeboxManualArtist] = useState(''); // <- biasanya sepaket
-  const [jukeboxQueue, setJukeboxQueue] = useState<JukeboxTrack[]>([]);
-  const [jukeboxNotification, setJukeboxNotification] = useState<string | null>(null);
-  const [activeReceipt, setActiveReceipt] = useState<JukeboxReceipt | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
-  const jukeboxListRef = useRef<HTMLDivElement>(null);
-
   const formatPrice = (price: number) => {
     const currency = localStorage.getItem('scanbite_currency_symbol') || 'IDR';
     if (currency === 'JPY') {
@@ -217,6 +146,7 @@ const handlePayAllBills = async () => {
       return `Rp ${price.toLocaleString('id-ID')}`;
     }
   };
+
   const changeLang = (newLang: 'id' | 'en') => {
     setLang(newLang);
     localStorage.setItem('scanbite_lang', newLang);
@@ -311,6 +241,29 @@ const handlePayAllBills = async () => {
     }
   };
 
+  const [customerName, setCustomerName] = useState('Pelanggan');
+  const [tableNumber, setTableNumber] = useState('05');
+  const [cafeName] = useState(() => localStorage.getItem('scanbite_cafe_name') || 'ScanBite Bistro');
+  const [bills, setBills] = useState<UserBill[]>(() => {
+    return computeBillsFromCart(cart, MENU_ITEMS);
+  });
+  const [paymentModalUser, setPaymentModalUser] = useState<UserBill | null>(null);
+  const [showTreatAllModal, setShowTreatAllModal] = useState(false);
+  const [checkoutCompleted, setCheckoutCompleted] = useState<boolean>(() => {
+    return localStorage.getItem('scanbite_checkout_completed') === 'true';
+  });
+  const [completedOrderDetails, setCompletedOrderDetails] = useState<any>(() => {
+    const saved = localStorage.getItem('scanbite_completed_order_details');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
+
+  // Cash / Tunai Opsi Pembayaran states
+  const [payMethod, setPayMethod] = useState<'qris' | 'cash'>('qris');
+  const [cashAmount, setCashAmount] = useState<number>(0);
+  const [cashInput, setCashInput] = useState<string>('');
+
   // Reset cash states when modal closes or opens
   useEffect(() => {
     setPayMethod('qris');
@@ -370,35 +323,30 @@ const handlePayAllBills = async () => {
     }
   };
 
-  /*
-useEffect(() => {
-  const lockTable = async () => {
+  useEffect(() => {
+    fetchActiveTableOrder();
+
     if (!supabase || !tableNumber) return;
-    const cleanNum = tableNumber.replace('Meja ', '').trim();
-    try {
-      await supabase.from('sb_tables').update({ status: 'TERISI' }).eq('table_number', cleanNum);
-    } catch (err) {
-      console.error("Gagal update meja:", err);
-    }
-  };
 
-  lockTable();
-  fetchActiveTableOrder();
+    const ordersSubscription = supabase.channel('checkout-orders-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sb_orders' }, () => {
+        fetchActiveTableOrder();
+      })
+      .on('broadcast', { event: 'order_updated' }, () => {
+        console.log("⚡ [BROADCAST ALERT] Instan update status pesanan terdeteksi!");
+        fetchActiveTableOrder();
+      })
+      .subscribe();
 
-  const ordersSubscription = supabase?.channel('checkout-orders-live')
-   .on('postgres_changes', { event: '*', schema: 'public', table: 'sb_orders' }, () => {
-      fetchActiveTableOrder();
-    })
-   .subscribe();
-
-  return () => {
-    if (supabase) supabase.removeChannel(ordersSubscription);
-  };
+    return () => {
+      if (supabase) {
+        supabase.removeChannel(ordersSubscription);
+      }
     };
-}, [tableNumber, lastOrderId]);  // <- line 397
+  }, [tableNumber, lastOrderId]);
 
-// Ripple Animation click handlers
-const [ripples, setRipples] = useState<{ id: number; x: number; y: number }[]>([]);
+  // Ripple Animation click handlers
+  const [ripples, setRipples] = useState<{ id: number; x: number; y: number }[]>([]);
 
   // Jukebox State
   const [jukeboxQueue, setJukeboxQueue] = useState<JukeboxTrack[]>([]);
@@ -526,73 +474,73 @@ const [ripples, setRipples] = useState<{ id: number; x: number; y: number }[]>([
     fetchMenuAndCompute();
   }, [cart]);
 
-// 2. Jukebox Sync & Realtime Subscriptions
-const fetchJukeboxTracks = async () => {
-  if (!supabase) {
-    // Offline fallback jukebox
-    const saved = localStorage.getItem('scanbite_jukebox_queue');
-    if (saved) {
-      setJukeboxQueue(JSON.parse(saved));
-    } else {
-      const offlineQueue: JukeboxTrack[] = [
-        {
-          id: '1',
-          title: 'Kopi Dangdut',
-          artist: 'Fahmy Shahab',
-          requestedBy: 'Meja 05',
-          votes: 6,
-          duration: '3:45',
-          isPlaying: true
-        },
-        {
-          id: '2',
-          title: 'Gajah',
-          artist: 'Tulus',
-          requestedBy: 'Meja 03',
-          votes: 3,
-          duration: '4:12',
-          isPlaying: false
-        }
-      ];
-      setJukeboxQueue(offlineQueue);
-      localStorage.setItem('scanbite_jukebox_queue', JSON.stringify(offlineQueue));
+  // 2. Jukebox Sync & Realtime Subscriptions
+  const fetchJukeboxTracks = async () => {
+    if (!supabase) {
+      // Offline fallback jukebox
+      const saved = localStorage.getItem('scanbite_jukebox_queue');
+      if (saved) {
+        setJukeboxQueue(JSON.parse(saved));
+      } else {
+        const offlineQueue: JukeboxTrack[] = [
+          {
+            id: '1',
+            title: 'Kopi Dangdut',
+            artist: 'Fahmy Shahab',
+            requestedBy: 'Meja 05',
+            votes: 6,
+            duration: '3:45',
+            isPlaying: true
+          },
+          {
+            id: '2',
+            title: 'Gajah',
+            artist: 'Tulus',
+            requestedBy: 'Meja 03',
+            votes: 3,
+            duration: '4:12',
+            isPlaying: false
+          }
+        ];
+        setJukeboxQueue(offlineQueue);
+        localStorage.setItem('scanbite_jukebox_queue', JSON.stringify(offlineQueue));
+      }
+      return;
     }
-    return;
-  }
 
-  try {
-    const activeTenant = localStorage.getItem('current_tenant') || 'scanbite_live';
-    const { data, error } = await supabase
-      .from('sb_song_requests')
-      .select('*')
-      .eq('tenant_id', activeTenant)
-      .order('created_at', { ascending: true });
-    
-    if (!error && data) {
-      const mappedTracks: JukeboxTrack[] = data.map((t: any, idx: number) => ({
-        id: t.id,
-        title: t.title || t.track_title,
-        artist: t.artist || t.artist_name,
-        requestedBy: t.nomor_meja || t.table_number || `Meja ${tableNumber}`,
-        votes: Number(t.votes) || 1,
-        duration: t.duration || '3:30',
-        artworkUrl: t.artwork_url || t.image_url || '',
-        youtubeId: t.youtube_id || '',
-        spotifyUri: t.spotify_uri || '',
-        isPlaying: t.status === 'played'
-      }));
+    try {
+      const activeTenant = localStorage.getItem('current_tenant') || 'scanbite_live';
+      const { data, error } = await supabase
+        .from('sb_song_requests')
+        .select('*')
+        .eq('tenant_id', activeTenant)
+        .order('created_at', { ascending: true });
+      
+      if (!error && data) {
+        const mappedTracks: JukeboxTrack[] = data.map((t: any, idx: number) => ({
+          id: t.id,
+          title: t.title || t.track_title,
+          artist: t.artist || t.artist_name,
+          requestedBy: t.nomor_meja || t.table_number || `Meja ${tableNumber}`,
+          votes: Number(t.votes) || 1,
+          duration: t.duration || '3:30',
+          artworkUrl: t.artwork_url || t.image_url || '',
+          youtubeId: t.youtube_id || '',
+          spotifyUri: t.spotify_uri || '',
+          isPlaying: t.status === 'played'
+        }));
 
-      // Sort queue: playing stays first, others sorted by votes down
-      const isPlaying = mappedTracks.filter((t) => t.isPlaying);
-      const remaining = mappedTracks.filter((t) => !t.isPlaying);
-      remaining.sort((a, b) => b.votes - a.votes);
+        // Sort queue: playing stays first, others sorted by votes down
+        const isPlaying = mappedTracks.filter((t) => t.isPlaying);
+        const remaining = mappedTracks.filter((t) => !t.isPlaying);
+        remaining.sort((a, b) => b.votes - a.votes);
 
-      setJukeboxQueue([...isPlaying, ...remaining]);
+        setJukeboxQueue([...isPlaying, ...remaining]);
+      }
+    } catch (err: any) {
+      console.warn('Realtime fetch error details: ', err.message);
     }
-  } catch (err: any) {
-    console.warn('Realtime fetch error details: ', err.message);
-  }
-};
+  };
 
   useEffect(() => {
     fetchJukeboxTracks();
@@ -622,8 +570,8 @@ const fetchJukeboxTracks = async () => {
   }, [jukeboxQueue]);
 
   // 3. Fungsi Bayar Mandiri Bill individual 
-  const handlePayAllBills = async (userName: string) => {
-  const userChange = payMethod === 'cash' ? Math.max(0, cashAmount - (paymentModalUser?.grandTotal || 0)) : 0;
+  const handlePayBill = async (userName: string) => {
+    const userChange = payMethod === 'cash' ? Math.max(0, cashAmount - (paymentModalUser?.grandTotal || 0)) : 0;
     
     // Flag this user bill in main state
     setBills((prev) => 
@@ -997,7 +945,7 @@ const fetchJukeboxTracks = async () => {
       }
 
       await fetchJukeboxTracks();
-      setJukeboxSearch(''); 
+      setJukeboxSearch('');
       setJukeboxNotification(`🎵 Lagu berhasil masuk antrean kafe!`);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('scanbite-sync'));
@@ -1005,13 +953,13 @@ const fetchJukeboxTracks = async () => {
 
       // Set Receipt Info for Export
       setActiveReceipt({
-        trackTitle: song.title || '',
-        artistName: song.artist || '',
-        tableNumber: tableNumber || '',
+        trackTitle: song.title,
+        artistName: song.artist,
+        tableNumber: tableNumber,
         requestTime,
         status: 'Dalam Antrean Kafe',
         trxId
-});
+      });
 
       setTimeout(() => setJukeboxNotification(null), 3500);
     } catch (err: any) {
@@ -1047,9 +995,9 @@ const fetchJukeboxTracks = async () => {
 
         // Set Receipt Info for Export
         setActiveReceipt({
-          trackTitle: song.title || '',
-          artistName: song.artist || '',
-          tableNumber: tableNumber || '',
+          trackTitle: song.title,
+          artistName: song.artist,
+          tableNumber: tableNumber,
           requestTime,
           status: 'Dalam Antrean Kafe',
           trxId
@@ -1179,53 +1127,6 @@ const fetchJukeboxTracks = async () => {
     window.location.href = window.location.origin + '/menu';
   };
 
-const fetchJukeboxTracks = async () => {
-  if (!supabase) {
-    const saved = localStorage.getItem('scanbite_jukebox_queue');
-    if (saved) {
-      setJukeboxQueue(JSON.parse(saved));
-    } else {
-      const offlineQueue: JukeboxTrack[] = [
-        { id: '1', title: 'Kopi Dangdut', artist: 'Fahmy Shahab', requestedBy: 'Meja 05', votes: 6, duration: '3:45', isPlaying: true },
-        { id: '2', title: 'Gajah', artist: 'Tulus', requestedBy: 'Meja 03', votes: 3, duration: '4:12', isPlaying: false }
-      ];
-      setJukeboxQueue(offlineQueue);
-      localStorage.setItem('scanbite_jukebox_queue', JSON.stringify(offlineQueue));
-    }
-    return;
-  }
-
-  try {
-    const activeTenant = localStorage.getItem('current_tenant') || 'scanbite_live';
-    const { data, error } = await supabase
-      .from('sb_song_requests')
-      .select('*')
-      .eq('tenant_id', activeTenant)
-      .order('created_at', { ascending: true });
-    
-    if (!error && data) {
-      const mappedTracks: JukeboxTrack[] = data.map((t: any) => ({
-        id: t.id,
-        title: t.title || t.track_title || '',
-        artist: t.artist || t.artist_name || '',
-        requestedBy: t.nomor_meja || t.table_number || `Meja ${tableNumber}`,
-        votes: Number(t.votes) || 1,
-        duration: t.duration || '3:30',
-        artworkUrl: t.artwork_url || t.image_url || '',
-        youtubeId: t.youtube_id || '',
-        spotifyUri: t.spotify_uri || '',
-        isPlaying: t.status === 'played'
-      }));
-
-      const isPlaying = mappedTracks.filter((t) => t.isPlaying);
-      const remaining = mappedTracks.filter((t) => !t.isPlaying);
-      remaining.sort((a, b) => b.votes - a.votes);
-      setJukeboxQueue([...isPlaying, ...remaining]);
-    }
-  } catch (err: any) {
-    console.warn('Realtime fetch error:', err.message);
-  }
-};
   // 6. Online Jukebox Realtime API Proxy Search on input or provider change (Debounced: 500ms)
   useEffect(() => {
     if (!jukeboxSearch.trim()) {
@@ -1264,7 +1165,10 @@ const fetchJukeboxTracks = async () => {
     return () => clearTimeout(delayTimer);
   }, [jukeboxSearch, jukeboxProvider]);
 
-    return (
+  const unpaidBills = bills.filter((b) => !b.isPaid);
+  const totalUnpaidGrandTotal = unpaidBills.reduce((sum, b) => sum + b.grandTotal, 0);
+
+  return (
     <div className="min-h-screen h-auto bg-[#FDFBF7] text-[#2C2520] font-sans antialiased pb-[150px] relative">
       
       {/* Custom CSS for actual water wave click ripple effect and printer formatting */}
@@ -1320,6 +1224,22 @@ const fetchJukeboxTracks = async () => {
           }
         }
       `}</style>
+
+      {/* RIPPLE CONTAINER OVERLAY ON SCREEN (Optionally displays active click indicators) */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-40">
+        {ripples.map((ripple) => (
+          <span
+            key={ripple.id}
+            className="animate-ripple"
+            style={{
+              left: ripple.x - 20,
+              top: ripple.y - 20,
+              width: '40px',
+              height: '40px',
+            }}
+          />
+        ))}
+      </div>
 
       {/* Header */}
       <header className="bg-white border-b border-[#F1EADF] px-4 py-4.5 sticky top-0 z-30 shadow-xs">
@@ -1419,7 +1339,7 @@ const fetchJukeboxTracks = async () => {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => handlePayAllBills()}
+                        onClick={(e) => handleButtonClickWithRipple(e, () => setPaymentModalUser(userBill))}
                         className="relative overflow-hidden bg-[#8C6239] text-[#FDFBF7] text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-xl flex items-center gap-1 shadow-xs transition-colors hover:bg-[#724f2b]"
                       >
                         <CreditCard className="w-3.5 h-3.5" />
@@ -1464,7 +1384,7 @@ const fetchJukeboxTracks = async () => {
                   
                   <button
                     type="button"
-                   onClick={() => setShowTreatAllModal(true)}
+                    onClick={(e) => handleButtonClickWithRipple(e, () => setShowTreatAllModal(true))}
                     className="relative overflow-hidden w-full sm:w-auto bg-[#8C6239] hover:bg-[#724f2b] text-white text-[11px] font-black uppercase tracking-widest px-5 py-3 rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer shrink-0"
                   >
                     <Gift className="w-4 h-4 text-amber-300 animate-pulse" />
@@ -1774,7 +1694,7 @@ const fetchJukeboxTracks = async () => {
               <button
                 type="button"
                 disabled={payMethod === 'cash' && cashAmount < paymentModalUser.grandTotal}
-                onClick={() => handlePayAllBills()}
+                onClick={(e) => handleButtonClickWithRipple(e, () => handlePayBill(paymentModalUser.name))}
                 className={`relative overflow-hidden text-[#FDFBF7] text-xs font-black uppercase tracking-wider py-3.5 rounded-xl transition-colors shadow-md focus:outline-none ${
                   payMethod === 'cash' && cashAmount < paymentModalUser.grandTotal
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
@@ -1957,7 +1877,7 @@ const fetchJukeboxTracks = async () => {
               <button
                 type="button"
                 disabled={payMethod === 'cash' && cashAmount < totalUnpaidGrandTotal}
-                onClick={() => handlePayAllBills()}
+                onClick={(e) => handleButtonClickWithRipple(e, () => handlePayAllBills())}
                 className={`relative overflow-hidden text-[#FDFBF7] text-xs font-black uppercase tracking-wider py-3.5 rounded-xl transition-colors shadow-md focus:outline-none ${
                   payMethod === 'cash' && cashAmount < totalUnpaidGrandTotal
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'

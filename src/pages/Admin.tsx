@@ -371,29 +371,15 @@ export default function Admin({ onNavigate }: AdminProps) {
     }
   };
 
-// Fungsi inisialisasi
-const init = async () => {
-  try {
-    await fetchOrders(); // ini kan nggak pake tableNumber
-  } catch (err) {
-    console.error("Gagal inisialisasi:", err);
-  }
-};
+  // Memory leak prevention
+  useEffect(() => {
+    return () => {
+      if (logoPreview) {
+        URL.revokeObjectURL(logoPreview);
+      }
+    };
+  }, [logoPreview]);
 
-// useEffect tunggal untuk memanggil init - UDAH DIBENERIN
-useEffect(() => {
-  init();
-}, []); // <-- Hapus tableNumber, lastOrderId. Kosongin aja kalo cuma jalan sekali pas buka halaman
-
-// useEffect untuk cleanup logoPreview - ini biarin aja
-useEffect(() => {
-  return () => {
-    if (logoPreview) {
-      URL.revokeObjectURL(logoPreview);
-    }
-  };
-}, [logoPreview]);
-  
   // Fetch and sync store settings from Supabase if alive
   const fetchStoreSettings = useCallback(async () => {
     if (!supabase) return;
@@ -1594,25 +1580,31 @@ useEffect(() => {
     }
   };
 
+  // Bulk archive or delete completed / finalized orders
   const handleClearAllCompletedOrders = async () => {
-  const confirmClear = window.confirm('Apakah Anda yakin ingin menghapus seluruh riwayat pesanan yang telah selesai disajikan?');
-  if (!confirmClear) return;
+    const confirmClear = window.confirm(
+      'Apakah Anda yakin ingin menghapus seluruh riwayat pesanan yang telah selesai disajikan? Tindakan ini tidak dapat dibatalkan.'
+    );
+    if (!confirmClear) return;
 
-  setLoading(true);
+    if (supabase) {
+      try {
+        setLoading(true);
+        const { error } = await supabase
+          .from('sb_orders')
+          .delete()
+          .in('status', ['delivered', 'completed']);
 
-  try {
-    const { error } = await supabase
-      .from('sb_orders')
-      .delete()
-      .in('status', ['delivered', 'completed']);
-
-    if (error) throw error;
-    
-    triggerNotification('✓ Berhasil menghapus seluruh riwayat pesanan.');
-    fetchOrders();
-  } catch (err: any) {
-    console.error('Error:', err);
-    trigger      // Offline Simulation context
+        if (error) throw error;
+        triggerNotification('✓ Berhasil menghapus seluruh riwayat pesanan selesai dari Supabase Cloud.');
+        fetchOrders();
+      } catch (err: any) {
+        alert(`Gagal menghapus data dari Supabase: ${err.message}`);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // Offline Simulation context
       const updatedOrders = orders.filter(
         (o) => o.status !== 'delivered' && o.status !== 'completed'
       );
