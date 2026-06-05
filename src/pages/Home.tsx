@@ -337,48 +337,48 @@ export default function Home({ onNavigate }: HomeProps) {
             </div>
           )}
 
-        </div>
-
-        {/* QR Simulation Utilities Panel (Visible for interactive testing directly in AI Studio Preview) */}
-        <div id="qr-simulator-panel" className="mt-8 bg-[#F4EDE2]/80 backdrop-blur border border-[#E6D5C3]/60 rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-3 text-[#8C6239]">
-            <Sparkles className="w-4 h-4 fill-[#8C6239]" />
-            <h3 className="text-xs font-bold uppercase tracking-wider">Sandbox QR Code Simulator</h3>
-          </div>
-          <p className="text-xs text-[#786455] mb-3 leading-relaxed">
-            Dalam mode pengembangan/preview, silakan pilih nomor meja di bawah untuk mensimulasikan pemindaian QR Code meja kafe fisik:
-          </p>
-          <div className="grid grid-cols-4 gap-2">
-            {['03', '05', '12', '18'].map((num) => (
-              <button
-                key={num}
-                type="button"
-                onClick={() => handleSimulateQR(num)}
-                className={`py-2 px-1 text-xs font-bold rounded-xl border transition-all text-center ${
-                  tableNumber === num 
-                    ? 'bg-[#8C6239] text-white border-[#8C6239]' 
-                    : 'bg-white text-[#5B4E44] border-[#EBE3D5] hover:bg-[#FAF8F5] hover:border-[#9E8775]'
-                }`}
-              >
-                Meja {num}
-              </button>
-            ))}
-          </div>
-          {tableNumber && (
-            <div className="mt-3 flex items-center justify-between border-t border-[#E6D5C3]/40 pt-2.5">
-              <span className="text-[10px] text-[#9E8775] font-semibold uppercase tracking-wider">Mode Simulasi Aktif</span>
-              <button
-                type="button"
-                onClick={() => {
-                  localStorage.removeItem('scanbite_table');
-                  window.location.href = window.location.pathname;
-                }}
-                className="text-[10px] font-bold text-red-600 hover:underline"
-              >
-                Hapus Sesi QR
-              </button>
-            </div>
-          )}
+        {process.env.NODE_ENV === 'development' && (
+  <div id="qr-simulator-panel" className="mt-8 bg-[#F4EDE2]/80 backdrop-blur border border-[#E6D5C3]/60 rounded-2xl p-4 shadow-sm">
+    <div className="flex items-center gap-2 mb-3 text-[#8C6239]">
+      <Sparkles className="w-4 h-4 fill-[#8C6239]" />
+      <h3 className="text-xs font-bold uppercase tracking-wider">Sandbox QR Code Simulator</h3>
+    </div>
+    <p className="text-xs text-[#786455] mb-3 leading-relaxed">
+      Dalam mode pengembangan/preview, silakan pilih nomor meja di bawah untuk mensimulasikan pemindaian QR Code meja kafe fisik:
+    </p>
+    <div className="grid grid-cols-4 gap-2">
+      {['03', '05', '12', '18'].map((num) => (
+        <button
+          key={num}
+          type="button"
+          onClick={() => handleSimulateQR(num)}
+          className={`py-2 px-1 text-xs font-bold rounded-xl border transition-all text-center ${
+            tableNumber === num 
+              ? 'bg-[#8C6239] text-white border-[#8C6239]' 
+              : 'bg-white text-[#5B4E44] border-[#EBE3D5] hover:bg-[#FAF8F5] hover:border-[#9E8775]'
+          }`}
+        >
+          Meja {num}
+        </button>
+      ))}
+    </div>
+    {tableNumber && (
+      <div className="mt-3 flex items-center justify-between border-t border-[#E6D5C3]/40 pt-2.5">
+        <span className="text-[10px] text-[#9E8775] font-semibold uppercase tracking-wider">Mode Simulasi Aktif</span>
+        <button
+          type="button"
+          onClick={() => {
+            localStorage.removeItem('scanbite_table');
+            window.location.href = window.location.pathname;
+          }}
+          className="text-[10px] font-bold text-red-600 hover:underline"
+        >
+          Hapus Sesi QR
+        </button>
+      </div>
+    )}
+  </div>
+)}     
         </div>
 
       </main>
