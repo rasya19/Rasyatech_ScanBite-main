@@ -242,7 +242,11 @@ export default function Checkout({ onNavigate, cart, setCart }: CheckoutProps) {
   };
 
   const [customerName, setCustomerName] = useState('Pelanggan');
-  const [tableNumber, setTableNumber] = useState('05');
+  const [tableNumber, setTableNumber] = useState<string>(() => {
+    const saved = localStorage.getItem('scanbite_table') || '05';
+    const sanitized = saved.replace('Meja ', '').trim();
+    return (!sanitized || sanitized === '-' || sanitized === '00' || sanitized === '0') ? '05' : sanitized.padStart(2, '0');
+  });
   const [cafeName] = useState(() => localStorage.getItem('scanbite_cafe_name') || 'ScanBite Bistro');
   const [bills, setBills] = useState<UserBill[]>(() => {
     return computeBillsFromCart(cart, MENU_ITEMS);
@@ -250,9 +254,37 @@ export default function Checkout({ onNavigate, cart, setCart }: CheckoutProps) {
   const [paymentModalUser, setPaymentModalUser] = useState<UserBill | null>(null);
   const [showTreatAllModal, setShowTreatAllModal] = useState(false);
   const [checkoutCompleted, setCheckoutCompleted] = useState<boolean>(() => {
+    const savedCart = localStorage.getItem('scanbite_cart');
+    let hasCartItems = false;
+    if (savedCart) {
+      try {
+        const parsed = JSON.parse(savedCart);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          hasCartItems = true;
+        }
+      } catch (_) {}
+    }
+    if (hasCartItems) {
+      localStorage.removeItem('scanbite_checkout_completed');
+      localStorage.removeItem('scanbite_completed_order_details');
+      return false;
+    }
     return localStorage.getItem('scanbite_checkout_completed') === 'true';
   });
   const [completedOrderDetails, setCompletedOrderDetails] = useState<any>(() => {
+    const savedCart = localStorage.getItem('scanbite_cart');
+    let hasCartItems = false;
+    if (savedCart) {
+      try {
+        const parsed = JSON.parse(savedCart);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          hasCartItems = true;
+        }
+      } catch (_) {}
+    }
+    if (hasCartItems) {
+      return null;
+    }
     const saved = localStorage.getItem('scanbite_completed_order_details');
     return saved ? JSON.parse(saved) : null;
   });
@@ -383,7 +415,10 @@ export default function Checkout({ onNavigate, cart, setCart }: CheckoutProps) {
     const savedName = localStorage.getItem('scanbite_customer_name') || 'Pelanggan';
     const savedTable = localStorage.getItem('scanbite_table') || '05';
     setCustomerName(savedName);
-    setTableNumber(savedTable);
+    
+    const sanitizedTable = savedTable.replace('Meja ', '').trim();
+    const finalTableNum = (!sanitizedTable || sanitizedTable === '-' || sanitizedTable === '00' || sanitizedTable === '0') ? '05' : sanitizedTable.padStart(2, '0');
+    setTableNumber(finalTableNum);
 
     if (cart.length === 0) return;
 
@@ -630,7 +665,12 @@ export default function Checkout({ onNavigate, cart, setCart }: CheckoutProps) {
       }
 
       // Payload Sanitization & Standard English Column Mapping
-      const cleanTableNumber = (dataTransaksi.table_number || '').toString().replace('Meja ', '').padStart(2, '0') || '05';
+      let cleanTableNumber = (dataTransaksi.table_number || '').toString().replace('Meja ', '').trim();
+      if (!cleanTableNumber || cleanTableNumber === '-' || cleanTableNumber === '00' || cleanTableNumber === '0') {
+        cleanTableNumber = '05';
+      } else {
+        cleanTableNumber = cleanTableNumber.padStart(2, '0');
+      }
       const cleanCustomerName = dataTransaksi.customer_name || 'Pelanggan';
       
       const rawItems = dataTransaksi.items || [];
