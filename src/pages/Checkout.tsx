@@ -186,8 +186,8 @@ export default function Checkout({ onNavigate, cart, setCart }: CheckoutProps) {
       treatModalTitle: 'Traktir Kasir QRIS',
       treatModalDesc: 'Menanggung lunas pembayaran hidangan untuk XYZ secara serentak.',
       treatModalSub: 'Total Tagihan Gabungan Se-Meja',
-      successTitle: 'Selesai! Pesanan Terkirim ke Dapur',
-      successSub: 'Setiap kawan semeja Anda telah bergeser ke status LUNAS. Staf loket billing & chef barista dapur saat ini sedang berkoordinasi meramu pesanan lezat Anda!',
+      successTitle: 'Status Pesanan',
+      successSub: 'Terima kasih! Pesanan Anda sedang diproses oleh Kasir. Silakan tunjukkan layar ini ke kasir untuk pembayaran.',
       successQueueTitle: 'Status Playlist Kafe',
       successQueueDesc: 'Lagu Anda sedang mengantre di pemutar utama kafe!',
       repeatOrder: 'Ulangi Order / Pesan Hidangan Lain',
@@ -229,8 +229,8 @@ export default function Checkout({ onNavigate, cart, setCart }: CheckoutProps) {
       treatModalTitle: 'Treat Table QRIS',
       treatModalDesc: 'Treating all pending dishes for XYZ simultaneously.',
       treatModalSub: 'Total Combined Table Bill',
-      successTitle: 'Done! Order Sent to Kitchen',
-      successSub: 'Everyone at your table is now marked as PAID. Our billing staff and barista-chefs are coordinating to prepare your delicious meal!',
+      successTitle: 'Order Status',
+      successSub: 'Thank you! Your order is being processed by the Cashier. Please show this screen to the cashier for payment.',
       successQueueTitle: 'Cafe Music Playlist Status',
       successQueueDesc: 'Your chosen song is now queued on the main player!',
       repeatOrder: 'Repeat Order / Order Another Dish',
@@ -2290,7 +2290,7 @@ export default function Checkout({ onNavigate, cart, setCart }: CheckoutProps) {
             </div>
 
             <div className="space-y-1.5">
-              <span className="text-[10px] bg-emerald-600/10 text-emerald-700 font-extrabold px-3 py-1 rounded-full uppercase tracking-widest">{lang === 'id' ? 'Meja Lunas Sukses' : 'Table Paid Successfully'}</span>
+              <span className="text-[10px] bg-emerald-600/10 text-emerald-700 font-extrabold px-3 py-1 rounded-full uppercase tracking-widest">{lang === 'id' ? 'Status Pesanan' : 'Order Status'}</span>
               <h2 className="text-2xl font-black text-[#1C1612] leading-tight">{t[lang].successTitle}</h2>
               <p className="text-xs text-[#786455] max-w-sm mx-auto leading-relaxed">
                 {t[lang].successSub}
@@ -2575,17 +2575,7 @@ export default function Checkout({ onNavigate, cart, setCart }: CheckoutProps) {
 
             </div>
 
-            {/* VISIBLE DIGITAL RECEIPT PREVIEW */}
-            {completedOrderDetails && (
-              <div className="mt-8 mb-6 mx-auto w-full">
-                <div className="flex items-center justify-center gap-2 mb-3">
-                  <div className="h-px bg-gray-300 flex-1"></div>
-                  <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Struk Digital Anda</span>
-                  <div className="h-px bg-gray-300 flex-1"></div>
-                </div>
-                <DigitalReceipt orderData={completedOrderDetails} className="shadow-2xl border-gray-200" />
-              </div>
-            )}
+            {/* VISIBLE DIGITAL RECEIPT PREVIEW REMOVED PER REQUIREMENT (KASIR YANG BERKUASA) */}
 
             <div className="pb-2 pt-1 flex flex-col gap-2">
               <button
@@ -2608,12 +2598,7 @@ export default function Checkout({ onNavigate, cart, setCart }: CheckoutProps) {
         </div>
       )}
 
-      {/* THERMAL PRINT RECEIPT ELEMENT (HIDDEN ON SCREEN, VISIBLE ON PRINT) */}
-      {completedOrderDetails && (
-        <div id="receipt-print-area">
-          <DigitalReceipt orderData={completedOrderDetails} />
-        </div>
-      )}
+      {/* THERMAL PRINT AREA REMOVED (KASIR YANG BERKUASA) */}
 
       {/* Footer Branding */}
       <footer className="absolute bottom-6 left-0 right-0 text-center text-xs text-[#9E8775] font-sans z-30 px-4">
