@@ -50,14 +50,6 @@ export default function App() {
         return JSON.parse(savedCart);
       } catch (_) {}
     }
-    const hasSessionName = localStorage.getItem('scanbite_customer_name');
-    if (!hasSessionName) {
-      return [
-        { menuItemId: 'm8', user: 'SITI', quantity: 1 },
-        { menuItemId: 'm7', user: 'IMAN', quantity: 1 },
-        { menuItemId: 'm10', user: 'SITI', quantity: 1 },
-      ];
-    }
     return [];
   });
 

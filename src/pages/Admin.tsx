@@ -727,9 +727,9 @@ export default function Admin({ onNavigate }: AdminProps) {
           {
             id: 'ord-1026',
             tableNumber: '05',
-            customerName: 'Siti Safira',
+            customerName: 'Rian Prasetya',
             items: [
-              { name: 'Beef Wellington Slices', price: 95000, quantity: 1, orderedBy: 'Siti' }
+              { name: 'Beef Wellington Slices', price: 95000, quantity: 1, orderedBy: 'Rian' }
             ],
             totalPrice: 109250,
             status: 'preparing',

@@ -81,7 +81,7 @@ export default function Menu({ onNavigate, cart, setCart }: MenuProps) {
   const [isLiveDatabase, setIsLiveDatabase] = useState(false);
 
   // Split Bill Roommates
-  const [roommates, setRoommates] = useState<string[]>(['SITI']);
+  const [roommates, setRoommates] = useState<string[]>([]);
   const [newRoommateName, setNewRoommateName] = useState('');
   const [showSimulator, setShowSimulator] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
