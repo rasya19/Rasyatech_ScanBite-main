@@ -1513,32 +1513,32 @@ export default function Admin({ onNavigate }: AdminProps) {
 
         const channel2 = supabase.channel('checkout-orders-live');
         channel2.subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            channel2.send({
-              type: 'broadcast',
-              event: 'order_updated',
-              payload: { orderId, status: nextStatus }
-            });
-          }
-        });
+          // ... (kode di atas)
+  if (supabase) {
+    try {
+      const { error } = await supabase
+        .from('sb_orders')
+        .update({ status: nextStatus })
+        .eq('id', orderId);
 
-      // --- PASTIKAN STRUKTURNYA SEPERTI INI ---
-        triggerNotification(`🟢 Status pesanan #${orderId} diubah ke ${nextStatus.toUpperCase()}`);
-        fetchOrders();
-      } catch (err: any) { // <--- Catch ini sekarang punya pasangan 'try' di atas
-        alert(`Gagal query update: ${err.message}`);
-      }
-    } else {
-      setOrders((prev) => {
-        const updated = prev.map((ord) => 
-          ord.id === orderId ? { ...ord, status: nextStatus } : ord
-        );
-        localStorage.setItem('scanbite_orders', JSON.stringify(updated));
-        return updated;
-      });
-      triggerNotification(`✓ Simulasi: Status pesanan #${orderId} diubah ke ${nextStatus.toUpperCase()}`);
-    }
-  };
+      if (error) throw error;
+
+      triggerNotification(`🟢 Status pesanan #${orderId} diubah ke ${nextStatus.toUpperCase()}`);
+      fetchOrders();
+    } catch (err: any) {
+      alert(`Gagal query update: ${err.message}`);
+    } // <--- KURUNG INI MENUTUP BLOK IF (SUPABASE)
+  } else {
+    setOrders((prev) => {
+      const updated = prev.map((ord) => 
+        ord.id === orderId ? { ...ord, status: nextStatus } : ord
+      );
+      localStorage.setItem('scanbite_orders', JSON.stringify(updated));
+      return updated;
+    });
+    triggerNotification(`✓ Simulasi: Status pesanan #${orderId} diubah ke ${nextStatus.toUpperCase()}`);
+  }
+};
 
   // Bulk archive or delete completed / finalized orders
   const handleClearAllCompletedOrders = async () => {
