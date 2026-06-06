@@ -121,27 +121,19 @@ export default function Menu({ onNavigate, cart, setCart }: MenuProps) {
     if (!supabase || !tableNumber) return;
     try {
       const cleanNum = tableNumber.replace('Meja ', '').trim();
-      const sessionStart = localStorage.getItem('scanbite_session_id')?.split('-')[1];
+      const sessionId = localStorage.getItem('scanbite_session_id');
 
       const { data, error } = await supabase
         .from('sb_orders')
         .select('*')
         .or(`table_number.eq."Meja ${cleanNum}",table_number.eq."${cleanNum}"`)
-        .in('status', ['pending', 'preparing', 'ready', 'delivered'])
+        .eq('session_id', sessionId)
+        .in('status', ['pending', 'preparing', 'ready'])
         .order('created_at', { ascending: false })
         .limit(1);
 
       if (!error && data && data.length > 0) {
-        const order = data[0];
-        // Check if order belongs to current session (or is very recent)
-        // If the order created_at is older than a threshold (e.g. 1 hour), ignore it for new sessions
-        const orderTime = new Date(order.created_at).getTime();
-        const now = Date.now();
-        if (sessionStart && now - Number(sessionStart) > 1000 * 60 * 60 && now - orderTime > 1000 * 60 * 60) {
-            setActiveOrder(null);
-            return;
-        }
-        setActiveOrder(order);
+        setActiveOrder(data[0]);
       } else {
         // Fallback: read from local scanbite_orders cache for offline scenarios
         const localSaved = localStorage.getItem('scanbite_orders');
@@ -149,7 +141,8 @@ export default function Menu({ onNavigate, cart, setCart }: MenuProps) {
           const list = JSON.parse(localSaved);
           const actives = list.filter((o: any) => {
             const isMatchTable = o.table_number?.toString().replace('Meja ', '').trim() === cleanNum;
-            return isMatchTable && ['pending', 'preparing', 'ready', 'delivered'].includes(o.status);
+            const isMatchSession = o.session_id === sessionId;
+            return isMatchTable && isMatchSession && ['pending', 'preparing', 'ready'].includes(o.status);
           });
           if (actives.length > 0) {
             setActiveOrder(actives[actives.length - 1]);
