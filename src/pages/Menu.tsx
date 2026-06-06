@@ -22,11 +22,14 @@ import {
   Bell,
   Sliders,
   X,
-  Lock
+  Lock,
+  Clock
 } from 'lucide-react';
+import { AnimatePresence } from 'motion/react';
 import { MenuItem, CartItem } from '../types';
 import { MENU_ITEMS } from '../data';
 import Aisommelier from '../components/Aisommelier';
+import WelcomeAnimation from '../components/WelcomeAnimation';
 import { supabase } from '../supabaseClient';
 
 interface MenuProps {
@@ -86,6 +89,20 @@ export default function Menu({ onNavigate, cart, setCart }: MenuProps) {
   const [showSimulator, setShowSimulator] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'menu' | 'cart'>('menu');
+  const [elapsedTime, setElapsedTime] = useState('00:00');
+  const [showWelcome, setShowWelcome] = useState(!localStorage.getItem('scanbite_welcomed'));
+  
+  // Timer for elapsed session
+  useEffect(() => {
+    const startTime = parseInt(localStorage.getItem('scanbite_session_start_time') || Date.now().toString());
+    const interval = setInterval(() => {
+        const delta = Date.now() - startTime;
+        const minutes = Math.floor(delta / 60000).toString().padStart(2, '0');
+        const seconds = Math.floor((delta % 60000) / 1000).toString().padStart(2, '0');
+        setElapsedTime(`${minutes}:${seconds}`);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Admin Hidden gesture states
   const [adminClicks, setAdminClicks] = useState<number>(0);
@@ -960,6 +977,10 @@ export default function Menu({ onNavigate, cart, setCart }: MenuProps) {
   return (
     <div className="flex flex-col h-screen w-full bg-[#FDFBF7] text-[#2C2520] font-sans antialiased overflow-hidden">
       
+      <AnimatePresence>
+        {showWelcome && <WelcomeAnimation onComplete={() => {setShowWelcome(false); localStorage.setItem('scanbite_welcomed', 'true');}} />}
+      </AnimatePresence>
+      
       {/* Toast Broadcast Popup Notification with Warm Bistro Accents */}
       {notification && (
         <div id="toast-realtime-badge" className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-4 animate-fadeIn">
@@ -998,11 +1019,14 @@ export default function Menu({ onNavigate, cart, setCart }: MenuProps) {
               </div>
             )}
             <div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 ">
                 <span className="text-[10px] uppercase font-bold text-[#8C6239] tracking-wider">
-                  {localStorage.getItem('scanbite_merchant_logo') ? `Meja ${tableNumber} • Sesi Aktif` : 'Sesi Pemesanan Aktif'}
+                  {localStorage.getItem('scanbite_merchant_logo') ? `Meja ${tableNumber}` : `Meja ${tableNumber}`}
                 </span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="flex items-center gap-0.5 text-[10px] font-bold text-[#9E8775]">
+                    <Clock className="w-3 h-3"/>
+                    {elapsedTime}
+                </span>
               </div>
               <h2 className="text-xs font-black text-[#2C2520] leading-none mt-0.5">Dinikmati oleh: <span className="text-[#8C6239] font-bold underline select-all">{customerName}</span></h2>
             </div>

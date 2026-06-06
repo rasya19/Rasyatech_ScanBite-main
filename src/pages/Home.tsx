@@ -128,6 +128,7 @@ export default function Home({ onNavigate }: HomeProps) {
 
     // Save state to localStorage
     localStorage.setItem('scanbite_customer_name', customerName.trim());
+    localStorage.setItem('scanbite_session_start_time', Date.now().toString());
     if (tableNumber) {
       localStorage.setItem('scanbite_table', tableNumber);
     }
