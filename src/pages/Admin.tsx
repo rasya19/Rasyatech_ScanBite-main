@@ -1489,6 +1489,16 @@ export default function Admin({ onNavigate }: AdminProps) {
 
         if (error) throw error;
         
+        if (nextStatus === 'DELIVERED') {
+    await supabase
+      .from('sb_tables')
+      .update({ status: 'KOSONG', session_id: null }) // Sesuaikan dengan field di DB Bapak
+      .eq('table_number', currentTableNumber); // Pastikan Bapak punya variabel tableNumber-nya
+  }
+
+} catch (err) {
+  console.error("Error updating status:", err);
+}
         // Custom broadcast to instantly alert customers
         const channel1 = supabase.channel('client-orders-live');
         channel1.subscribe((status) => {
