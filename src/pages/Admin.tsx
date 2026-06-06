@@ -1562,6 +1562,16 @@ export default function Admin({ onNavigate }: AdminProps) {
 
         if (error) throw error;
         
+        if (nextStatus === 'DELIVERED') {
+    await supabase
+      .from('sb_tables')
+      .update({ status: 'KOSONG', session_id: null }) // Sesuaikan dengan field di DB Bapak
+      .eq('table_number', currentTableNumber); // Pastikan Bapak punya variabel tableNumber-nya
+  }
+
+} catch (err) {
+  console.error("Error updating status:", err);
+}
         // Custom broadcast to instantly alert customers
         const channel1 = supabase.channel('client-orders-live');
         channel1.subscribe((status) => {
@@ -1575,33 +1585,38 @@ export default function Admin({ onNavigate }: AdminProps) {
         });
 
         const channel2 = supabase.channel('checkout-orders-live');
-        channel2.subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            channel2.send({
-              type: 'broadcast',
-              event: 'order_updated',
-              payload: { orderId, status: nextStatus }
-            });
-          }
-        });
 
-        triggerNotification(`🟢 Status pesanan #${orderId} diubah ke ${nextStatus.toUpperCase()}`);
-        fetchOrders();
-      } catch (err: any) {
-        alert(`Gagal query update: ${err.message}`);
-      }
-    } else {
-      setOrders((prev) => {
-        const updated = prev.map((ord) => 
-          ord.id === orderId ? { ...ord, status: nextStatus } : ord
-        );
-        localStorage.setItem('scanbite_orders', JSON.stringify(updated));
-        return updated;
-      });
-      triggerNotification(`✓ Simulasi: Status pesanan #${orderId} diubah ke ${nextStatus.toUpperCase()}`);
+    }// 1. Tambahkan kurung kurawal penutup untuk subscribe di sini
+          channel2.subscribe((status) => { // ... isi subscribe Bapak ...
+    }); // <--- INI WAJIB ADA AGAR SUBSCRIBE TERTUTUP
+
+// 2. Sekarang blok updateStatus Bapak jadi bersih dan tidak error
+const updateStatus = async (orderId, nextStatus) => {
+  if (supabase) {
+    try {
+      const { error } = await supabase
+        .from('sb_orders')
+        .update({ status: nextStatus })
+        .eq('id', orderId);
+
+      if (error) throw error;
+
+      triggerNotification(`🟢 Status pesanan #${orderId} diubah ke ${nextStatus.toUpperCase()}`);
+      fetchOrders();
+    } catch (err: any) {
+      alert(`Gagal query update: ${err.message}`);
     }
-  };
-
+  } else {
+    setOrders((prev) => {
+      const updated = prev.map((ord) => 
+        ord.id === orderId ? { ...ord, status: nextStatus } : ord
+      );
+      localStorage.setItem('scanbite_orders', JSON.stringify(updated));
+      return updated;
+    });
+    triggerNotification(`✓ Simulasi: Status pesanan #${orderId} diubah ke ${nextStatus.toUpperCase()}`);
+  }
+};
   // Bulk archive or delete completed / finalized orders
   const handleClearAllCompletedOrders = async () => {
     const confirmClear = window.confirm(
@@ -4460,7 +4475,6 @@ export default function Admin({ onNavigate }: AdminProps) {
                         <span className="absolute right-3.5 top-2.5 text-xs font-bold text-gray-400 font-mono">%</span>
                       </div>
                     </div>
-
                     <div>
                       <label className="block text-[10px] uppercase font-black text-[#786455] tracking-wider mb-1">Biaya Layanan (% Service)</label>
                       <div className="relative">
@@ -4482,6 +4496,8 @@ export default function Admin({ onNavigate }: AdminProps) {
                     </div>
                   </div>
 
+                  {/* ... (kode input pajak & biaya layanan di atasnya tetap sama) ... */}
+
                   <div className="bg-[#FAF8F5] rounded-2xl p-4 border border-[#EBE3D5] space-y-1.5 text-left border-dashed">
                     <p className="text-[10px] font-black text-[#1C1612] uppercase tracking-wider flex items-center gap-1.5">
                       <span>📌</span> Ilustrasi Perhitungan POS
@@ -4492,20 +4508,16 @@ export default function Admin({ onNavigate }: AdminProps) {
                   </div>
                 </div>
               </div>
+              {/* Hapus div ekstra di sini */}
+            </div>
+          )}
+        </main>
 
-             </div>
-          </div>
-        )}
-
-      </main>
-
-      {activeReceipt && (
-        <>
-          {/* RENDER EMBEDDED KASIR PRINT RECEIPT PREVIEW MODAL */}
+        {/* RENDER EMBEDDED KASIR PRINT RECEIPT PREVIEW MODAL */}
+        {activeReceipt && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 print:absolute print:inset-0 print:bg-white print:z-50 print:flex print:items-start print:justify-center overflow-y-auto">
             <div className="bg-white p-6 rounded-3xl w-full max-w-sm shadow-xl space-y-4 animate-fadeIn font-mono text-xs border border-[#EBE3D5] print-receipt-modal flex flex-col my-8">
               
-              {/* Render full digital receipt with item-wise details and split bills support */}
               <DigitalReceipt 
                 orderData={{
                   ...activeReceipt,
@@ -4522,7 +4534,6 @@ export default function Admin({ onNavigate }: AdminProps) {
                 className="border-0 shadow-none p-0 w-full" 
               />
 
-              {/* Actions (Not visible during print) */}
               <div className="grid grid-cols-2 gap-3 pt-2 print:hidden font-sans border-t border-dashed border-gray-300">
                 <button
                   type="button"
@@ -4549,8 +4560,8 @@ export default function Admin({ onNavigate }: AdminProps) {
               </div>
             </div>
           </div>
-        </>
-      )}
-    </div>
-  );
-}
+        )}
+      );
+    };
+
+    export default Admin;
