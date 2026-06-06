@@ -1513,10 +1513,9 @@ export default function Admin({ onNavigate }: AdminProps) {
 
         const channel2 = supabase.channel('checkout-orders-live');
 
-// 1. Tambahkan kurung kurawal penutup untuk subscribe di sini
-channel2.subscribe((status) => {
-  // ... isi subscribe Bapak ...
-}); // <--- INI WAJIB ADA AGAR SUBSCRIBE TERTUTUP
+    }// 1. Tambahkan kurung kurawal penutup untuk subscribe di sini
+          channel2.subscribe((status) => { // ... isi subscribe Bapak ...
+    }); // <--- INI WAJIB ADA AGAR SUBSCRIBE TERTUTUP
 
 // 2. Sekarang blok updateStatus Bapak jadi bersih dan tidak error
 const updateStatus = async (orderId, nextStatus) => {
