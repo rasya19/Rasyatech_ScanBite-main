@@ -1522,9 +1522,10 @@ export default function Admin({ onNavigate }: AdminProps) {
           }
         });
 
+      // --- PASTIKAN STRUKTURNYA SEPERTI INI ---
         triggerNotification(`🟢 Status pesanan #${orderId} diubah ke ${nextStatus.toUpperCase()}`);
         fetchOrders();
-      } catch (err: any) {
+      } catch (err: any) { // <--- Catch ini sekarang punya pasangan 'try' di atas
         alert(`Gagal query update: ${err.message}`);
       }
     } else {
