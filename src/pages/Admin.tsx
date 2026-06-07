@@ -2565,9 +2565,17 @@ export default function Admin({ onNavigate }: AdminProps) {
                   (o.paymentStatus === 'unpaid' || o.paymentStatus?.toLowerCase() === 'unpaid' || o.status === 'unpaid')
                 );
                 const hasActiveOrder = activeTableOrders.length > 0 || !!unpaidOrder;
-                const isSessionEmptyOrPlaceholder = !sessionGuest || sessionGuest === '-' || sessionGuest.toLowerCase().includes('registrasi') || sessionGuest.toLowerCase().includes('baru');
+                const isSessionEmptyOrPlaceholder = !sessionGuest || 
+                                               sessionGuest.trim() === '' || 
+                                               sessionGuest === '-' || 
+                                               sessionGuest === 'null' || 
+                                               sessionGuest === 'undefined' || 
+                                               sessionGuest.toLowerCase() === 'null' || 
+                                               sessionGuest.toLowerCase() === 'undefined' || 
+                                               sessionGuest.toLowerCase().includes('registrasi') || 
+                                               sessionGuest.toLowerCase().includes('baru');
 
-                if (isSessionEmptyOrPlaceholder && !hasActiveOrder) {
+                if (isSessionEmptyOrPlaceholder) {
                   return false;
                 }
 
@@ -2668,9 +2676,17 @@ export default function Admin({ onNavigate }: AdminProps) {
 
                     const sessionGuest = tblDetail?.nama_pelanggan;
                     const hasActiveOrder = activeTableOrders.length > 0 || !!unpaidOrder;
-                    const isSessionEmptyOrPlaceholder = !sessionGuest || sessionGuest === '-' || sessionGuest.toLowerCase().includes('registrasi') || sessionGuest.toLowerCase().includes('baru');
+                    const isSessionEmptyOrPlaceholder = !sessionGuest || 
+                                                   sessionGuest.trim() === '' || 
+                                                   sessionGuest === '-' || 
+                                                   sessionGuest === 'null' || 
+                                                   sessionGuest === 'undefined' || 
+                                                   sessionGuest.toLowerCase() === 'null' || 
+                                                   sessionGuest.toLowerCase() === 'undefined' || 
+                                                   sessionGuest.toLowerCase().includes('registrasi') || 
+                                                   sessionGuest.toLowerCase().includes('baru');
 
-                    if (isSessionEmptyOrPlaceholder && !hasActiveOrder) {
+                    if (isSessionEmptyOrPlaceholder) {
                       status = 'KOSONG';
                       guestName = '-';
                     } else {
