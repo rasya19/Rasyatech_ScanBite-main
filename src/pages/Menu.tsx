@@ -322,21 +322,38 @@ export default function Menu({ onNavigate, cart, setCart }: MenuProps) {
               }
               
               if (!hasMatched) {
-                setOccupiedSessionId(latestOrder.id);
-                setShowOccupiedModal(true);
-                return;
+                // Ensure we don't block ourselves if our local session ID matches the active order ID
+                if (mySessionId !== latestOrder.id) {
+                  setOccupiedSessionId(latestOrder.id);
+                  setShowOccupiedModal(true);
+                  return;
+                }
               }
+            }
+          }
+
+          // Fallback / Extra Check: If no active order exists in sb_orders yet but table has an active session_id in sb_tables
+          if (tableData?.session_id) {
+            if (mySessionId !== tableData.session_id) {
+              setOccupiedSessionId(tableData.session_id);
+              setShowOccupiedModal(true);
+              return;
             }
           }
         } else {
           // 3. Jika status KOSONG, mendaftarkan sesi baru dan mengubah status meja menjadi TERISI di sb_tables
           if (!mySessionId) {
             const freshSession = `sess-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            mySessionId = freshSession;
             localStorage.setItem('scanbite_session_id', freshSession);
           }
           await supabase
             .from('sb_tables')
-            .update({ status: 'TERISI' })
+            .update({ 
+              status: 'TERISI',
+              session_id: mySessionId,
+              nama_pelanggan: customerName || 'Pelanggan Utama'
+            })
             .or(`table_number.eq."Meja ${cleanNum}",table_number.eq."${cleanNum}"`);
         }
       } catch (err) {
@@ -419,6 +436,19 @@ export default function Menu({ onNavigate, cart, setCart }: MenuProps) {
           }
         } catch (err: any) {
           console.warn('Gagal mensinkronisasikan item order lama:', err.message);
+        }
+
+        // Tuntut siaran langsung (instant broadcast) ke sirkuit realtime agar host menyadari kehadiran penyusup yang sah
+        try {
+          const cleanNum = tableNumber.replace('Meja ', '').trim().padStart(2, '0');
+          const channel = supabase.channel(`table-${cleanNum}`);
+          channel.send({
+            type: 'broadcast',
+            event: 'mate_joined',
+            payload: { user: customerName }
+          });
+        } catch (broadcastErr) {
+          console.warn('Failed to dispatch instant roommate join broadcast:', broadcastErr);
         }
       }
     }
@@ -567,8 +597,11 @@ export default function Menu({ onNavigate, cart, setCart }: MenuProps) {
   useEffect(() => {
     if (!supabase || !tableNumber) return;
 
+    const cleanNum = tableNumber.replace('Meja ', '').trim().padStart(2, '0');
+    const roomChannelName = `table-${cleanNum}`;
+
     // Connect to room channel according to restaurant table code
-    const channel = supabase.channel(`table-${tableNumber}`, {
+    const channel = supabase.channel(roomChannelName, {
       config: {
         broadcast: { self: false }
       }
@@ -597,7 +630,7 @@ export default function Menu({ onNavigate, cart, setCart }: MenuProps) {
       })
       .on('broadcast', { event: 'mate_joined' }, (payload: any) => {
         const { user } = payload.payload;
-        triggerNotification(`👥 ${user} telah memindai QR & bergabung di Meja ${tableNumber}!`);
+        triggerNotification(`👥 ${user} telah memindai QR & bergabung di Meja ${cleanNum}!`);
         setRoommates(prev => prev.includes(user) ? prev : [...prev, user]);
       })
       .subscribe((status) => {
@@ -634,7 +667,8 @@ export default function Menu({ onNavigate, cart, setCart }: MenuProps) {
 
     // Send Broadcast to other diners if Supabase Channel is up
     if (supabase) {
-      const channel = supabase.channel(`table-${tableNumber}`);
+      const cleanNum = tableNumber.replace('Meja ', '').trim().padStart(2, '0');
+      const channel = supabase.channel(`table-${cleanNum}`);
       channel.send({
         type: 'broadcast',
         event: 'item_added',
@@ -687,7 +721,8 @@ export default function Menu({ onNavigate, cart, setCart }: MenuProps) {
     setNewRoommateName('');
 
     if (supabase) {
-      const channel = supabase.channel(`table-${tableNumber}`);
+      const cleanNum = tableNumber.replace('Meja ', '').trim().padStart(2, '0');
+      const channel = supabase.channel(`table-${cleanNum}`);
       channel.send({
         type: 'broadcast',
         event: 'mate_joined',

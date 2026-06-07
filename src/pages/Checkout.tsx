@@ -743,10 +743,19 @@ export default function Checkout({ onNavigate, cart, setCart }: CheckoutProps) {
         }));
       });
 
-      const customerNameSummary = currentBills
-        .filter(b => b.isPaid)
-        .map(b => b.name)
-        .join(', ') || customerName;
+      // Mengamankan identitas Host agar tidak hilang tertimpa oleh Guest
+      const originalHost = activeOrder?.customer_name 
+        ? activeOrder.customer_name.split('&')[0].split(',')[0].trim() 
+        : (customerName || 'Pelanggan');
+
+      // Ambil daftar tamu lain yang sudah melunasi tagihannya untuk digabungkan
+      const paidGuests = currentBills
+        .filter(b => b.isPaid && b.name?.toLowerCase().trim() !== originalHost.toLowerCase().trim())
+        .map(b => b.name);
+
+      const customerNameSummary = paidGuests.length > 0
+        ? `${originalHost} & ${paidGuests.join(', ')}`
+        : originalHost;
 
       const payload = {
         id: orderIdToUse,
@@ -1067,7 +1076,11 @@ export default function Checkout({ onNavigate, cart, setCart }: CheckoutProps) {
       const cashPayments = finalBillsState.filter(b => b.isPaid && b.payMethod === 'cash');
       const qrisPayments = finalBillsState.filter(b => b.isPaid && b.payMethod === 'qris');
       
-      let customerNameSummary = nameOverrider || customerName;
+      const originalHost = activeOrder?.customer_name 
+        ? activeOrder.customer_name.split('&')[0].split(',')[0].trim() 
+        : (customerName || 'Pelanggan');
+
+      let customerNameSummary = nameOverrider || originalHost;
       let overallPayMethod = payMethod;
       
       if (cashPayments.length > 0 && qrisPayments.length > 0) {
