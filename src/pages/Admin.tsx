@@ -1561,20 +1561,19 @@ export default function Admin({ onNavigate }: AdminProps) {
           .eq('id', orderId);
 
         if (error) throw error;
-        
-        if (nextStatus === 'DELIVERED') {
-    await supabase
-      .from('sb_tables')
-      .update({ status: 'KOSONG', session_id: null }) // Sesuaikan dengan field di DB Bapak
-      .eq('table_number', currentTableNumber); // Pastikan Bapak punya variabel tableNumber-nya
-  }
 
-} catch (err) {
-  console.error("Error updating status:", err);
-}
+        const currentTableNumber = orders.find((order) => order.id === orderId)?.tableNumber;
+        
+        if (nextStatus === 'DELIVERED' && currentTableNumber) {
+          await supabase
+            .from('sb_tables')
+            .update({ status: 'KOSONG', session_id: null }) // Sesuaikan dengan field di DB Bapak
+            .eq('table_number', currentTableNumber); // Pastikan Bapak punya variabel tableNumber-nya
+        }
+
         // Custom broadcast to instantly alert customers
         const channel1 = supabase.channel('client-orders-live');
-        channel1.subscribe((status) => {
+        channel1.subscribe((status, err) => {
           if (status === 'SUBSCRIBED') {
             channel1.send({
               type: 'broadcast',
@@ -1585,13 +1584,23 @@ export default function Admin({ onNavigate }: AdminProps) {
         });
 
         const channel2 = supabase.channel('checkout-orders-live');
-
-    }// 1. Tambahkan kurung kurawal penutup untuk subscribe di sini
-          channel2.subscribe((status) => { // ... isi subscribe Bapak ...
-    }); // <--- INI WAJIB ADA AGAR SUBSCRIBE TERTUTUP
+        channel2.subscribe((status, err) => {
+          if (status === 'SUBSCRIBED') {
+            channel2.send({
+              type: 'broadcast',
+              event: 'order_updated',
+              payload: { orderId, status: nextStatus }
+            });
+          }
+        });
+      } catch (err) {
+        console.error("Error updating status:", err);
+      }
+    }
+  };
 
 // 2. Sekarang blok updateStatus Bapak jadi bersih dan tidak error
-const updateStatus = async (orderId, nextStatus) => {
+const updateStatus = async (orderId: string, nextStatus: string) => {
   if (supabase) {
     try {
       const { error } = await supabase
@@ -2735,6 +2744,23 @@ const updateStatus = async (orderId, nextStatus) => {
                       label = 'SEDANG MAKAN';
                     }
 
+                    const activeOrder = unpaidOrder || activeTableOrders[0];
+                    const tableActionOrder = activeOrder ? {
+                      id: activeOrder.id || activeOrder.sessionId || `sess-${num}`,
+                      status: activeOrder.status || 'pending',
+                      payment_method: activeOrder.paymentMethod || 'cash',
+                      paymentMethod: activeOrder.paymentMethod || 'cash',
+                      paymentStatus: activeOrder.paymentStatus || 'unpaid',
+                      tableNumber: activeOrder.tableNumber || num
+                    } : {
+                      id: `sess-${num}`,
+                      status: 'KOSONG',
+                      payment_method: 'cash',
+                      paymentMethod: 'cash',
+                      paymentStatus: 'paid',
+                      tableNumber: num
+                    };
+
                     return (
                       <div 
                         key={num} 
@@ -2783,38 +2809,20 @@ const updateStatus = async (orderId, nextStatus) => {
                           </div>
                         </div>
 
-                        {status !== 'KOSONG' && (() => {
-                          const activeOrder = unpaidOrder || activeTableOrders[0];
-                          const order = activeOrder ? {
-                            id: activeOrder.id || activeOrder.sessionId || `sess-${num}`,
-                            status: activeOrder.status || 'pending',
-                            payment_method: activeOrder.paymentMethod || 'cash',
-                            paymentMethod: activeOrder.paymentMethod || 'cash',
-                            paymentStatus: activeOrder.paymentStatus || 'unpaid',
-                            tableNumber: activeOrder.tableNumber || num
-                          } : {
-                            id: `sess-${num}`,
-                            status: 'KOSONG',
-                            payment_method: 'cash',
-                            paymentMethod: 'cash',
-                            paymentStatus: 'paid',
-                            tableNumber: num
-                          };
-
-                          return (
+                        {status !== 'KOSONG' && (
                             <div className="mt-3 w-full border-t pt-2 flex flex-col gap-2">
                               {/* 1. JIKA STATUS MASIH PENDING (Pesanan Baru Masuk) */}
-                              {order.status === 'pending' && (
+                              {tableActionOrder.status === 'pending' && (
                                 <>
                                   <div className="bg-red-100 text-red-700 px-2 py-1 rounded text-center text-[11px] font-bold animate-bounce">
                                     🔔 ADA PESANAN BARU!
                                   </div>
                                   
                                   {/* Deteksi otomatis metode pembayaran yang ada di database */}
-                                  {order.payment_method === 'qris' ? (
+                                  {tableActionOrder.payment_method === 'qris' ? (
                                     <button 
                                       type="button"
-                                      onClick={() => handleConfirmQrisPayment(order.id)}
+                                      onClick={() => handleConfirmQrisPayment(tableActionOrder.id)}
                                       className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold w-full transition-all shadow cursor-pointer"
                                     >
                                       🔵 KONFIRMASI QRIS (LIVE)
@@ -2822,7 +2830,7 @@ const updateStatus = async (orderId, nextStatus) => {
                                   ) : (
                                     <button 
                                       type="button"
-                                      onClick={() => handleConfirmCashPayment(order.id)}
+                                      onClick={() => handleConfirmCashPayment(tableActionOrder.id)}
                                       className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold w-full transition-all shadow cursor-pointer"
                                     >
                                       🟠 KONFIRMASI CASH
@@ -2832,7 +2840,7 @@ const updateStatus = async (orderId, nextStatus) => {
                               )}
 
                               {/* 2. JIKA STATUS SEDANG DIMASAK DI DAPUR (Preparing) */}
-                              {order.status === 'preparing' && (
+                              {tableActionOrder.status === 'preparing' && (
                                 <div className="bg-blue-50 text-blue-600 border border-blue-200 px-3 py-2 rounded-lg text-center text-xs font-bold flex flex-col gap-1 shadow-sm">
                                   <div className="flex items-center justify-center gap-1 animate-pulse">
                                     <span>🍳</span> <span>SEDANG DIMASAK DI DAPUR</span>
@@ -2842,7 +2850,7 @@ const updateStatus = async (orderId, nextStatus) => {
                               )}
 
                               {/* 3. JIKA STATUS HIDANGAN SIAP DISAJIKAN (Ready) */}
-                              {order.status === 'ready' && (
+                              {tableActionOrder.status === 'ready' && (
                                 <div className="bg-green-50 text-green-700 border border-green-200 px-3 py-2 rounded-lg text-center text-xs font-bold shadow-sm">
                                   🛎️ HIDANGAN SIAP DISAJIKAN!
                                 </div>
@@ -2851,19 +2859,18 @@ const updateStatus = async (orderId, nextStatus) => {
                               {/* 4. TOMBOL UTAMA KOSONGKAN MEJA (Hanya Aktif Jika Tidak Sedang Dimasak) */}
                               <button 
                                 type="button"
-                                onClick={() => handleKosongkanMeja(order.tableNumber, order.id)}
+                                onClick={() => handleKosongkanMeja(tableActionOrder.tableNumber, tableActionOrder.id)}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold w-full transition-all shadow-sm cursor-pointer ${
-                                  order.status === 'preparing'
+                                  tableActionOrder.status === 'preparing'
                                     ? 'bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300' 
                                     : 'bg-rose-600 text-white hover:bg-rose-700'
                                 }`}
-                                disabled={order.status === 'preparing'}
+                                disabled={tableActionOrder.status === 'preparing'}
                               >
                                 ❌ KOSONGKAN MEJA
                               </button>
                             </div>
-                          );
-                        })}
+                        )}
                       </div>
                     );
                   })}
@@ -4511,6 +4518,7 @@ const updateStatus = async (orderId, nextStatus) => {
               {/* Hapus div ekstra di sini */}
             </div>
         </div>
+        )}
 
         {/* RENDER EMBEDDED KASIR PRINT RECEIPT PREVIEW MODAL */}
         {activeReceipt && (
@@ -4560,6 +4568,8 @@ const updateStatus = async (orderId, nextStatus) => {
             </div>
           </div>
         )}
+      </main>
+    </div>
       );
     };
 
