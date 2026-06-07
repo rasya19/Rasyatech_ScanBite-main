@@ -2774,10 +2774,12 @@ export default function Admin({ onNavigate }: AdminProps) {
                             );
                           })()}
 
-                          <div className="overflow-hidden">
-                            <span className="text-[8px] text-[#9E8775]/90 font-extrabold block uppercase tracking-wider leading-none font-mono">Status Sesi:</span>
-                            <span className="text-[11px] font-bold truncate text-[#2C2520] block mt-0.5">{guestName}</span>
-                          </div>
+                           <div className="overflow-hidden bg-transparent">
+                             <span className="text-[8px] text-[#9E8775]/90 font-extrabold block uppercase tracking-wider leading-none font-mono bg-transparent">Status Sesi:</span>
+                             <span className="text-[11px] font-bold text-[#2C2520] block mt-0.5 bg-transparent break-words whitespace-normal line-clamp-2 leading-tight shadow-none border-none outline-none">
+                               {typeof guestName === 'string' ? guestName.replace(/<\/?[^>]+(>|$)/g, "") : guestName}
+                             </span>
+                           </div>
                         </div>
 
                         {status !== 'KOSONG' && (() => {
