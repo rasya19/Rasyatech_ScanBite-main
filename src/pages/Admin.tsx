@@ -46,8 +46,8 @@ const PendingCountdownTimer: React.FC<{ order: CafeOrder }> = ({ order }) => {
   useEffect(() => {
     const calculateElapsed = () => {
       let createdTimeMs = 0;
-      if (order.createdAtDate) {
-        createdTimeMs = new Date(order.createdAtDate).getTime();
+      if ((order as any).createdAtDate) {
+        createdTimeMs = new Date((order as any).createdAtDate).getTime();
       } else if ((order as any).created_at) {
         createdTimeMs = new Date((order as any).created_at).getTime();
       } else if (order.createdAt) {
@@ -164,7 +164,7 @@ export default function Admin({ onNavigate }: AdminProps) {
   );
 
   // Tabs Navigation Selector
-  const [activeTab, setActiveTab] = useState<'orders' | 'completed_history' | 'menu_management' | 'jukebox_controller' | 'qr_generator'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'completed_history' | 'menu_management' | 'jukebox_controller' | 'qr_generator' | 'store_settings'>('orders');
 
   
   // States of synced database records
@@ -1264,14 +1264,14 @@ export default function Admin({ onNavigate }: AdminProps) {
 
     setOrders(prevOrders => 
       prevOrders.map(o => 
-        (o.sessionId === sessionId || o.id === sessionId || o.session_id === sessionId) 
+        (o.sessionId === sessionId || o.id === sessionId || (o as any).session_id === sessionId) 
           ? { ...o, paymentStatus: 'paid' } 
           : o
       )
     );
 
     // Set high-level active receipt preview for kasir after confirmation
-    const updatedOrder = orders.find(o => o.id === sessionId || o.sessionId === sessionId || o.session_id === sessionId);
+    const updatedOrder = orders.find(o => o.id === sessionId || o.sessionId === sessionId || (o as any).session_id === sessionId);
     if (updatedOrder) {
       setActiveReceipt({
         ...updatedOrder,
@@ -4572,5 +4572,3 @@ const updateStatus = async (orderId: string, nextStatus: string) => {
     </div>
       );
     };
-
-    export default Admin;
