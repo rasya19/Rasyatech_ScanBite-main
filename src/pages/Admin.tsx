@@ -144,6 +144,26 @@ function getCashChangeAlerts(order: any): string[] {
   return alerts;
 }
 
+const normalizeOrderStatus = (status: unknown) => (status || '').toString().trim().toLowerCase();
+const isServedOrderStatus = (status: unknown) => ['delivered', 'disajikan', 'served'].includes(normalizeOrderStatus(status));
+const isCompletedOrderStatus = (status: unknown) => ['completed', 'selesai'].includes(normalizeOrderStatus(status));
+const isEatingTableStatus = (status: unknown) => ['sedang makan', 'sedang_makan', 'delivered', 'disajikan', 'served'].includes(normalizeOrderStatus(status));
+const normalizeTableNumber = (tableNumber: unknown) => {
+  const cleaned = (tableNumber || '').toString().replace('Meja ', '').trim();
+  return cleaned ? cleaned.padStart(2, '0') : '';
+};
+const isSameTableNumber = (left: unknown, right: unknown) => {
+  const normalizedLeft = normalizeTableNumber(left);
+  const normalizedRight = normalizeTableNumber(right);
+  return !!normalizedLeft && !!normalizedRight && normalizedLeft === normalizedRight;
+};
+const mapOrderStatusForAdmin = (status: unknown) => {
+  const normalized = normalizeOrderStatus(status);
+  if (normalized === 'menunggu') return 'pending';
+  if (isServedOrderStatus(normalized)) return 'delivered';
+  return normalized || 'pending';
+};
+
 interface AdminProps {
   onNavigate: (page: string) => void;
 }
@@ -274,6 +294,107 @@ export default function Admin({ onNavigate }: AdminProps) {
   const [tablesData, setTablesData] = useState<any[]>([]);
   const [isAddTableOpen, setIsAddTableOpen] = useState(false);
   const [newTableNum, setNewTableNum] = useState('');
+
+  const updateTableStatusInSupabase = async (tableNumber: string, status: string, customerName?: string) => {
+    if (!supabase) return false;
+
+    const formattedTable = normalizeTableNumber(tableNumber);
+    if (!formattedTable) return false;
+
+    const normalTable = parseInt(formattedTable, 10).toString();
+    const candidates = Array.from(new Set([
+      formattedTable,
+      normalTable,
+      `Meja ${formattedTable}`,
+      `Meja ${normalTable}`
+    ]));
+    const possibleColumns = ['table_number', 'nomor_meja', 'nomor_meja_id', 'id'];
+    const payloads = customerName
+      ? [{ status, nama_pelanggan: customerName }, { status }]
+      : [{ status }];
+
+    for (const payload of payloads) {
+      for (const col of possibleColumns) {
+        try {
+          const { data, error } = await supabase
+            .from('sb_tables')
+            .update(payload)
+            .in(col, candidates)
+            .select('status');
+
+          if (!error && data && data.length > 0) return true;
+        } catch (_) {}
+      }
+    }
+
+    return false;
+  };
+
+  const clearTableStatusInSupabase = async (tableNumber: string) => {
+    if (!supabase) throw new Error('Supabase client is not available.');
+
+    const formattedTable = normalizeTableNumber(tableNumber);
+    if (!formattedTable) throw new Error('Nomor meja tidak valid.');
+
+    const normalTable = parseInt(formattedTable, 10).toString();
+    const tableNumberCandidates = Array.from(new Set([
+      formattedTable,
+      normalTable,
+      `Meja ${formattedTable}`,
+      `Meja ${normalTable}`
+    ]));
+
+    const { data, error } = await supabase
+      .from('sb_tables')
+      .update({ status: 'KOSONG', session_id: null })
+      .in('table_number', tableNumberCandidates)
+      .select('id, table_number, status');
+
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error(`Tidak ada baris sb_tables yang cocok untuk table_number: ${tableNumberCandidates.join(', ')}`);
+    }
+
+    return data;
+  };
+
+  const markTableAsEatingLocally = (order?: CafeOrder | null) => {
+    if (!order) return;
+
+    const formattedTable = normalizeTableNumber(order.tableNumber);
+    if (!formattedTable) return;
+
+    setTablesData(prev => prev.map(t =>
+      isSameTableNumber(t.nomor_meja_id, formattedTable)
+        ? {
+            ...t,
+            status: 'SEDANG MAKAN',
+            session_id: order.sessionId || order.id,
+            nama_pelanggan: order.customerName || t.nama_pelanggan || 'Sajian Disajikan'
+          }
+        : t
+    ));
+
+    const savedDetails = localStorage.getItem('scanbite_tables_details');
+    if (savedDetails) {
+      try {
+        const parsed = JSON.parse(savedDetails);
+        const updated = parsed.map((t: any) =>
+          isSameTableNumber(t.nomor_meja_id, formattedTable)
+            ? {
+                ...t,
+                status: 'SEDANG MAKAN',
+                session_id: order.sessionId || order.id,
+                nama_pelanggan: order.customerName || t.nama_pelanggan || 'Sajian Disajikan'
+              }
+            : t
+        );
+        localStorage.setItem('scanbite_tables_details', JSON.stringify(updated));
+      } catch (e) {
+        console.warn('Error updating local table status for served order:', e);
+      }
+    }
+  };
 
   // Merchant logo state and management hooks
   const [merchantLogo, setMerchantLogo] = useState<string>(() => {
@@ -806,7 +927,7 @@ export default function Admin({ onNavigate }: AdminProps) {
             customerName: ord.customer_name || itemsList[0]?.orderedBy || 'Pelanggan',
             items: itemsList,
             totalPrice: Number(ord.total_price) || itemsList.reduce((sum, i) => sum + (i.price * i.quantity), 0),
-            status: ord.status === 'menunggu' ? 'pending' : (ord.status as 'pending' | 'preparing' | 'delivered'),
+            status: mapOrderStatusForAdmin(ord.status),
             paymentMethod: ord.payment_method || 'cash',
             paymentStatus: ord.payment_status || 'unpaid',
             sessionId: ord.session_id || `sess-${ord.table_number}`,
@@ -962,24 +1083,28 @@ export default function Admin({ onNavigate }: AdminProps) {
             return mVal.includes(num) || mVal.includes(parseInt(num).toString());
           });
 
-          // Active order has payment_status !== 'paid'
-          const activeOrder = tableOrders.find(o => o.payment_status !== 'paid' && o.status !== 'completed');
+          const servedOrder = tableOrders.find(o => isServedOrderStatus(o.status));
+          const activeOrder = tableOrders.find(o => !isCompletedOrderStatus(o.status) && !isServedOrderStatus(o.status));
 
           const isTerisiInDb = dbRow?.status === 'TERISI';
 
           let finalStatus = 'KOSONG';
-          if (activeOrder) {
-            finalStatus = activeOrder.status === 'pending' ? 'MELAYANI' : 'SEDANG MAKAN';
+          if (servedOrder || isEatingTableStatus(dbRow?.status)) {
+            finalStatus = 'SEDANG MAKAN';
+          } else if (activeOrder) {
+            finalStatus = 'MELAYANI';
           } else if (isTerisiInDb) {
             finalStatus = 'TERISI';
           }
+
+          const tableOrder = servedOrder || activeOrder;
 
           return {
             nomor_meja_id: num,
             nomor_meja: `Meja ${num}`,
             status: finalStatus,
-            session_id: activeOrder?.id || null,
-            nama_pelanggan: activeOrder?.customer_name || '-'
+            session_id: tableOrder?.session_id || tableOrder?.id || dbRow?.session_id || null,
+            nama_pelanggan: tableOrder?.customer_name || dbRow?.nama_pelanggan || '-'
           };
         });
 
@@ -1130,53 +1255,51 @@ export default function Admin({ onNavigate }: AdminProps) {
     }
     
     const formattedMeja = finalTableNum.replace('Meja ', '').trim().padStart(2, '0');
+    const normalMejaNum = parseInt(formattedMeja, 10).toString();
+    const matchingTableNumbers = [formattedMeja, normalMejaNum, `Meja ${formattedMeja}`, `Meja ${normalMejaNum}`];
     
     if (supabase) {
       try {
-        // 1. Update orders status and payment status in Supabase so they are fully resolved
+        // 1. Complete orders using the canonical order status column only.
         if (orderId && !orderId.startsWith('sess-')) {
-          const { error: orderError } = await supabase.from('sb_orders').update({ status: 'completed', payment_status: 'paid' }).eq('id', orderId);
-          if (orderError) {
-            console.error("DITOLAK SUPABASE KARENA:", orderError);
-            // Fallback: update only status to completed in case payment_status column does not exist or is malformed
-            const { error: fallbackError } = await supabase.from('sb_orders').update({ status: 'completed' }).eq('id', orderId);
-            if (fallbackError) {
-              console.error("DITOLAK SUPABASE KARENA (FALLBACK GAGAL):", fallbackError);
-            }
-          }
-        } else {
-          // If we only have table number or fake ID, complete all active & non-completed orders for this table
-          const normalNum = parseInt(formattedMeja).toString();
-          const { error: orderError } = await supabase.from('sb_orders').update({ status: 'completed', payment_status: 'paid' })
-            .in('table_number', [formattedMeja, normalNum, `Meja ${formattedMeja}`, `Meja ${normalNum}`])
-            .neq('status', 'completed');
-          if (orderError) {
-            console.error("DITOLAK SUPABASE KARENA:", orderError);
-            // Fallback: update only status to completed
-            const { error: fallbackError } = await supabase.from('sb_orders').update({ status: 'completed' })
-              .in('table_number', [formattedMeja, normalNum, `Meja ${formattedMeja}`, `Meja ${normalNum}`])
-              .neq('status', 'completed');
-            if (fallbackError) {
-              console.error("DITOLAK SUPABASE KARENA (FALLBACK GAGAL):", fallbackError);
-            }
-          }
+          const { error: orderError } = await supabase.from('sb_orders').update({ status: 'completed' }).eq('id', orderId);
+          if (orderError) throw orderError;
         }
 
-        // 2. IMPORTANT: Update the table status in Supabase sb_tables safely across potential column schemas
-        const normalMejaNum = parseInt(formattedMeja).toString();
-        const possibleColumns = ['table_number', 'nomor_meja', 'nomor_meja_id', 'id'];
-        for (const col of possibleColumns) {
+        // Always complete every active order for the table so no stale row re-marks it occupied after re-fetch.
+        const { error: tableOrdersError } = await supabase.from('sb_orders').update({ status: 'completed' })
+          .in('table_number', matchingTableNumbers)
+          .neq('status', 'completed');
+        if (tableOrdersError) throw tableOrdersError;
+
+        // 2. Update and verify the physical table row. This must match table_number, not a mixed-type id.
+        const updatedTables = await clearTableStatusInSupabase(formattedMeja);
+        console.log('✅ Table status updated in sb_tables:', updatedTables);
+
+        setOrders(prev => prev.map(o => 
+          (o.id === orderId || (isSameTableNumber(o.tableNumber, formattedMeja) && o.status !== 'completed'))
+            ? { ...o, status: 'completed', paymentStatus: 'paid' }
+            : o
+        ));
+        setTablesData(prev => prev.map(t => 
+          isSameTableNumber(t.nomor_meja_id, formattedMeja)
+            ? { ...t, status: 'KOSONG', session_id: null, nama_pelanggan: '-' }
+            : t
+        ));
+
+        const savedDetails = localStorage.getItem('scanbite_tables_details');
+        if (savedDetails) {
           try {
-            const { error: updErr } = await supabase
-              .from('sb_tables')
-              .update({ status: 'KOSONG' })
-              .in(col, [formattedMeja, normalMejaNum, `Meja ${formattedMeja}`, `Meja ${normalMejaNum}`]);
-            
-            if (!updErr) {
-              console.log(`✅ Table status updated in sb_tables matching column ${col}`);
-              break;
-            }
-          } catch (_) {}
+            const parsed = JSON.parse(savedDetails);
+            const updated = parsed.map((t: any) =>
+              isSameTableNumber(t.nomor_meja_id, formattedMeja)
+                ? { ...t, status: 'KOSONG', session_id: null, nama_pelanggan: '-' }
+                : t
+            );
+            localStorage.setItem('scanbite_tables_details', JSON.stringify(updated));
+          } catch (e) {
+            console.warn('Gagal update cache status meja lokal:', e);
+          }
         }
 
         // 3. Send custom instant broadcast to client-orders-live and checkout-orders-live channels
@@ -1186,7 +1309,7 @@ export default function Admin({ onNavigate }: AdminProps) {
             channel1.send({
               type: 'broadcast',
               event: 'order_updated',
-              payload: { tableNumber: formattedMeja, status: 'completed' }
+              payload: { tableNumber: formattedMeja, status: 'KOSONG' }
             });
           }
         });
@@ -1197,19 +1320,21 @@ export default function Admin({ onNavigate }: AdminProps) {
             channel2.send({
               type: 'broadcast',
               event: 'order_updated',
-              payload: { tableNumber: formattedMeja, status: 'completed' }
+              payload: { tableNumber: formattedMeja, status: 'KOSONG' }
             });
           }
         });
           
-      } catch (err) {
+      } catch (err: any) {
         console.warn('Error clearing table in Supabase:', err);
+        triggerNotification(`❌ Gagal kosongkan Meja ${formattedMeja}: ${err.message || 'Supabase update gagal'}`);
+        return;
       }
     }
 
     // Update local state for orders and table status
     setOrders(prev => prev.map(o => 
-      (o.id === orderId || (o.tableNumber === formattedMeja && o.status !== 'completed'))
+      (o.id === orderId || (isSameTableNumber(o.tableNumber, formattedMeja) && o.status !== 'completed'))
         ? { ...o, status: 'completed', paymentStatus: 'paid' }
         : o
     ));
@@ -1219,8 +1344,8 @@ export default function Admin({ onNavigate }: AdminProps) {
       try {
         const parsed = JSON.parse(savedOrders);
         const updated = parsed.map((o: any) => 
-          (o.id === orderId || (o.table_number === formattedMeja && o.status !== 'completed'))
-            ? { ...o, status: 'completed', payment_status: 'paid' }
+          (o.id === orderId || (isSameTableNumber(o.table_number || o.tableNumber, formattedMeja) && o.status !== 'completed'))
+            ? { ...o, status: 'completed' }
             : o
         );
         localStorage.setItem('scanbite_orders', JSON.stringify(updated));
@@ -1228,7 +1353,7 @@ export default function Admin({ onNavigate }: AdminProps) {
     }
 
     setTablesData(prev => prev.map(t => 
-      t.nomor_meja_id === formattedMeja
+      isSameTableNumber(t.nomor_meja_id, formattedMeja)
         ? { ...t, status: 'KOSONG', session_id: null, nama_pelanggan: '-' }
         : t
     ));
@@ -1549,6 +1674,7 @@ export default function Admin({ onNavigate }: AdminProps) {
     } else if (currentStatus === 'ready') {
       nextStatus = 'delivered';
     }
+    const targetOrder = orders.find(order => order.id === orderId);
 
     if (supabase) {
       try {
@@ -1558,6 +1684,11 @@ export default function Admin({ onNavigate }: AdminProps) {
           .eq('id', orderId);
 
         if (error) throw error;
+
+        if (nextStatus === 'delivered' && targetOrder) {
+          markTableAsEatingLocally({ ...targetOrder, status: nextStatus });
+          await updateTableStatusInSupabase(targetOrder.tableNumber, 'SEDANG MAKAN', targetOrder.customerName);
+        }
         
         // Custom broadcast to instantly alert customers
         const channel1 = supabase.channel('client-orders-live');
@@ -1583,7 +1714,8 @@ export default function Admin({ onNavigate }: AdminProps) {
         });
 
         triggerNotification(`🟢 Status pesanan #${orderId} diubah ke ${nextStatus.toUpperCase()}`);
-        fetchOrders();
+        await fetchOrders();
+        await fetchTables();
       } catch (err: any) {
         alert(`Gagal query update: ${err.message}`);
       }
@@ -1595,6 +1727,9 @@ export default function Admin({ onNavigate }: AdminProps) {
         localStorage.setItem('scanbite_orders', JSON.stringify(updated));
         return updated;
       });
+      if (nextStatus === 'delivered' && targetOrder) {
+        markTableAsEatingLocally({ ...targetOrder, status: nextStatus });
+      }
       triggerNotification(`✓ Simulasi: Status pesanan #${orderId} diubah ke ${nextStatus.toUpperCase()}`);
     }
   };
@@ -1625,7 +1760,7 @@ export default function Admin({ onNavigate }: AdminProps) {
     } else {
       // Offline Simulation context
       const updatedOrders = orders.filter(
-        (o) => o.status !== 'delivered' && o.status !== 'completed'
+        (o) => !isServedOrderStatus(o.status) && !isCompletedOrderStatus(o.status)
       );
       setOrders(updatedOrders);
       localStorage.setItem('scanbite_orders', JSON.stringify(updatedOrders));
@@ -2024,7 +2159,7 @@ export default function Admin({ onNavigate }: AdminProps) {
   const pendingOrders = orders.filter(o => o.status === 'pending');
   const preparingOrders = orders.filter(o => o.status === 'preparing');
   const readyOrders = orders.filter(o => o.status === 'ready');
-  const finishedOrders = orders.filter(o => o.status === 'delivered');
+  const finishedOrders = orders.filter(o => isServedOrderStatus(o.status));
 
   // Completed / Delivered Orders for Archive Log with comprehensive system filters
   const completedOrders = finishedOrders.filter(ord => {
@@ -2553,7 +2688,7 @@ export default function Admin({ onNavigate }: AdminProps) {
             {/* Quick Stats Bento Cards Grid */}
             {(() => {
               const statsRevenue = orders
-                .filter(o => o.status === 'delivered')
+                .filter(o => isServedOrderStatus(o.status))
                 .reduce((sum, o) => sum + o.totalPrice, 0);
 
               const formattedRevenue = (() => {
@@ -2569,20 +2704,19 @@ export default function Admin({ onNavigate }: AdminProps) {
               const statsActiveOrders = orders.filter(o => o.status === 'pending' || o.status === 'preparing').length;
 
               const statsOccupiedTables = tablesList.filter(num => {
-                const activeTableOrders = orders.filter(o => o.tableNumber === num && o.status !== 'delivered' && o.status !== 'completed');
-                const hasOnlyDeliveredOrders = orders.some(o => o.tableNumber === num && (o.status === 'delivered' || o.status === 'completed')) && 
-                                               !orders.some(o => o.tableNumber === num && o.status !== 'delivered' && o.status !== 'completed');
+                const activeTableOrders = orders.filter(o => isSameTableNumber(o.tableNumber, num) && !isServedOrderStatus(o.status) && !isCompletedOrderStatus(o.status));
+                const servedTableOrders = orders.filter(o => isSameTableNumber(o.tableNumber, num) && isServedOrderStatus(o.status));
+                const hasServedOrders = servedTableOrders.length > 0;
                 
                 const tblDetail = tablesData.find(t => t.nomor_meja_id === num);
                 const dbStatus = tblDetail?.status || 'KOSONG';
                 
                 const sessionGuest = tblDetail?.nama_pelanggan;
                 const unpaidOrder = orders.find(o => 
-                  o.tableNumber === num && 
-                  o.status !== 'completed' && o.status !== 'delivered' &&
+                  isSameTableNumber(o.tableNumber, num) && 
+                  !isCompletedOrderStatus(o.status) && !isServedOrderStatus(o.status) &&
                   (o.paymentStatus === 'unpaid' || o.paymentStatus?.toLowerCase() === 'unpaid' || o.status === 'unpaid')
                 );
-                const hasActiveOrder = activeTableOrders.length > 0 || !!unpaidOrder;
                 const isSessionEmptyOrPlaceholder = !sessionGuest || 
                                                sessionGuest.trim() === '' || 
                                                sessionGuest === '-' || 
@@ -2593,13 +2727,11 @@ export default function Admin({ onNavigate }: AdminProps) {
                                                sessionGuest.toLowerCase().includes('registrasi') || 
                                                sessionGuest.toLowerCase().includes('baru');
 
-                if (isSessionEmptyOrPlaceholder) {
-                  return false;
-                }
-
                 let tblStatus = 'KOSONG';
-                if (dbStatus === 'SEDANG MAKAN' || (hasOnlyDeliveredOrders && dbStatus !== 'KOSONG')) {
+                if (hasServedOrders || isEatingTableStatus(dbStatus)) {
                   tblStatus = 'SEDANG MAKAN';
+                } else if (isSessionEmptyOrPlaceholder) {
+                  return false;
                 } else if (activeTableOrders.length > 0) {
                   tblStatus = 'MELAYANI';
                 } else if (dbStatus === 'MEMILIH') {
@@ -2674,9 +2806,9 @@ export default function Admin({ onNavigate }: AdminProps) {
               <div className="max-h-[340px] overflow-y-auto scrollbar-thin pr-1 pb-1.5">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   {tablesList.map((num) => {
-                    const activeTableOrders = orders.filter(o => o.tableNumber === num && o.status !== 'delivered' && o.status !== 'completed');
-                    const hasOnlyDeliveredOrders = orders.some(o => o.tableNumber === num && (o.status === 'delivered' || o.status === 'completed')) && 
-                                                   !orders.some(o => o.tableNumber === num && o.status !== 'delivered' && o.status !== 'completed');
+                    const activeTableOrders = orders.filter(o => isSameTableNumber(o.tableNumber, num) && !isServedOrderStatus(o.status) && !isCompletedOrderStatus(o.status));
+                    const servedTableOrders = orders.filter(o => isSameTableNumber(o.tableNumber, num) && isServedOrderStatus(o.status));
+                    const servedOrder = servedTableOrders[0];
                     
                     const tblDetail = tablesData.find(t => t.nomor_meja_id === num);
                     const dbStatus = tblDetail?.status || 'KOSONG';
@@ -2686,14 +2818,13 @@ export default function Admin({ onNavigate }: AdminProps) {
 
                     // Detect active payment that is unpaid (Menunggu Kasir / Verifikasi QRIS)
                     const unpaidOrder = orders.find(o => 
-                      o.tableNumber === num && 
-                      o.status !== 'completed' && o.status !== 'delivered' &&
+                      isSameTableNumber(o.tableNumber, num) && 
+                      !isCompletedOrderStatus(o.status) && !isServedOrderStatus(o.status) &&
                       (o.paymentStatus === 'unpaid' || o.paymentStatus?.toLowerCase() === 'unpaid' || o.status === 'unpaid')
                     );
                     const isQrisPayment = unpaidOrder && (unpaidOrder.paymentMethod === 'qris' || unpaidOrder.paymentMethod?.toLowerCase() === 'qris' || unpaidOrder.paymentMethod === 'emoney');
 
                     const sessionGuest = tblDetail?.nama_pelanggan;
-                    const hasActiveOrder = activeTableOrders.length > 0 || !!unpaidOrder;
                     const isSessionEmptyOrPlaceholder = !sessionGuest || 
                                                    sessionGuest.trim() === '' || 
                                                    sessionGuest === '-' || 
@@ -2704,15 +2835,14 @@ export default function Admin({ onNavigate }: AdminProps) {
                                                    sessionGuest.toLowerCase().includes('registrasi') || 
                                                    sessionGuest.toLowerCase().includes('baru');
 
-                    if (isSessionEmptyOrPlaceholder) {
+                    if (servedOrder || isEatingTableStatus(dbStatus)) {
+                      status = 'SEDANG MAKAN';
+                      guestName = servedOrder?.customerName || tblDetail?.nama_pelanggan || 'Sajian Disajikan';
+                    } else if (isSessionEmptyOrPlaceholder) {
                       status = 'KOSONG';
                       guestName = '-';
                     } else {
-                      if (dbStatus === 'SEDANG MAKAN' || (hasOnlyDeliveredOrders && dbStatus !== 'KOSONG')) {
-                        status = 'SEDANG MAKAN';
-                        const matchedOrder = orders.find(o => o.tableNumber === num);
-                        guestName = matchedOrder ? matchedOrder.customerName : (tblDetail?.nama_pelanggan || 'Sajian Disajikan');
-                      } else if (activeTableOrders.length > 0) {
+                      if (activeTableOrders.length > 0) {
                         status = 'MELAYANI';
                         guestName = activeTableOrders[0].customerName;
                       } else if (dbStatus === 'MEMILIH') {
@@ -2781,7 +2911,7 @@ export default function Admin({ onNavigate }: AdminProps) {
                           )}
 
                           {(() => {
-                            const tableActiveOrders = orders.filter(o => o.tableNumber === num && o.status !== 'completed' && o.status !== 'delivered');
+                            const tableActiveOrders = orders.filter(o => isSameTableNumber(o.tableNumber, num) && !isCompletedOrderStatus(o.status) && !isServedOrderStatus(o.status));
                             const tableChangeAlerts = tableActiveOrders.flatMap(o => getCashChangeAlerts(o));
                             if (tableChangeAlerts.length === 0) return null;
                             return (
