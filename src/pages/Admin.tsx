@@ -1156,10 +1156,11 @@ export default function Admin({ onNavigate }: AdminProps) {
     localStorage.setItem('scanbite_tables', JSON.stringify(updatedList));
 
     const newTable = {
-      table_number: formattedNum,
-      status: 'KOSONG' as const,
-      nama_pelanggan: '-'
-    };
+    tenant_id: activeTenant,
+    table_number: formattedNum,
+    status: 'KOSONG',
+    nama_pelanggan: '-'
+  };
     const updatedDetails = [...tablesData, newTable];
     setTablesData(updatedDetails);
     localStorage.setItem('scanbite_tables_details', JSON.stringify(updatedDetails));
