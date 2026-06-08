@@ -486,7 +486,7 @@ export default function Checkout({ onNavigate, cart, setCart }: CheckoutProps) {
     const cleanNum = normalizeTableCode(tableNumber);
 
     const tablesSubscription = supabase.channel('checkout-tables-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sb_tables' }, (payload: any) => {
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sb_tables' }, (payload: any) => {
         const updatedRow = payload.new || {};
         const nextStatus = (updatedRow.status || '').toString().trim().toUpperCase();
         if (nextStatus === 'KOSONG' && isCurrentTableRow(updatedRow, cleanNum)) {
