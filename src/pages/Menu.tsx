@@ -184,6 +184,57 @@ export default function Menu({ onNavigate, cart, setCart }: MenuProps) {
     }, 4500);
   };
 
+  const normalizeTableCode = (value: any) => {
+    const cleaned = (value || '').toString().replace('Meja ', '').trim();
+    return cleaned ? cleaned.padStart(2, '0') : '';
+  };
+
+  const isCurrentTableRow = (row: any, cleanNum: string) => {
+    return [
+      row?.table_number,
+      row?.nomor_meja,
+      row?.nomor_meja_id,
+      row?.id
+    ].some((value) => normalizeTableCode(value) === cleanNum);
+  };
+
+  const clearCustomerTableSession = () => {
+    sessionStorage.removeItem('scanbite_customer_name');
+    sessionStorage.removeItem('scanbite_table');
+    sessionStorage.removeItem('scanbite_session_id');
+    localStorage.removeItem('scanbite_cart');
+    localStorage.removeItem('scanbite_checkout_completed');
+    localStorage.removeItem('scanbite_completed_order_details');
+    localStorage.removeItem('scanbite_last_order_id');
+    setCart([]);
+    setActiveOrder(null);
+    setCustomerName('');
+    setTableNumber('');
+    onNavigate('home');
+  };
+
+  useEffect(() => {
+    if (!supabase || !tableNumber) return;
+
+    const cleanNum = normalizeTableCode(tableNumber);
+    if (!cleanNum) return;
+
+    const tableClearChannel = supabase.channel(`customer-table-clear-menu-${cleanNum}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'sb_tables' }, (payload: any) => {
+        const updatedRow = payload.new || {};
+        const nextStatus = (updatedRow.status || '').toString().trim().toUpperCase();
+        if (nextStatus === 'KOSONG' && isCurrentTableRow(updatedRow, cleanNum)) {
+          supabase.removeChannel(tableClearChannel);
+          clearCustomerTableSession();
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(tableClearChannel);
+    };
+  }, [tableNumber, onNavigate, setCart]);
+
   // Load client parameters on startup
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

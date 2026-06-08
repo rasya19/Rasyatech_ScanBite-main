@@ -424,6 +424,41 @@ export default function Checkout({ onNavigate, cart, setCart }: CheckoutProps) {
   }, [tableNumber, lastOrderId]);
 
   // Live table session status tracking
+  const normalizeTableCode = (value: any) => {
+    const cleaned = (value || '').toString().replace('Meja ', '').trim();
+    return cleaned ? cleaned.padStart(2, '0') : '';
+  };
+
+  const isCurrentTableRow = (row: any, cleanNum: string) => {
+    return [
+      row?.table_number,
+      row?.nomor_meja,
+      row?.nomor_meja_id,
+      row?.id
+    ].some((value) => normalizeTableCode(value) === cleanNum);
+  };
+
+  const clearCustomerTableSession = () => {
+    sessionStorage.removeItem('scanbite_customer_name');
+    sessionStorage.removeItem('scanbite_table');
+    sessionStorage.removeItem('scanbite_session_id');
+    localStorage.removeItem('scanbite_customer_name');
+    localStorage.removeItem('scanbite_table');
+    localStorage.removeItem('scanbite_session_id');
+    localStorage.removeItem('scanbite_cart');
+    localStorage.removeItem('scanbite_checkout_completed');
+    localStorage.removeItem('scanbite_completed_order_details');
+    localStorage.removeItem('scanbite_last_order_id');
+    setCart([]);
+    setBills([]);
+    setCheckoutCompleted(false);
+    setCompletedOrderDetails(null);
+    setLastOrderId(null);
+    setActiveOrder(null);
+    setSupabaseTableData(null);
+    onNavigate('home');
+  };
+
   const fetchSupabaseTableData = async () => {
     if (!supabase || !tableNumber) return;
     try {
@@ -448,9 +483,17 @@ export default function Checkout({ onNavigate, cart, setCart }: CheckoutProps) {
     fetchSupabaseTableData();
 
     if (!supabase || !tableNumber) return;
+    const cleanNum = normalizeTableCode(tableNumber);
 
     const tablesSubscription = supabase.channel('checkout-tables-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sb_tables' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sb_tables' }, (payload: any) => {
+        const updatedRow = payload.new || {};
+        const nextStatus = (updatedRow.status || '').toString().trim().toUpperCase();
+        if (nextStatus === 'KOSONG' && isCurrentTableRow(updatedRow, cleanNum)) {
+          supabase.removeChannel(tablesSubscription);
+          clearCustomerTableSession();
+          return;
+        }
         fetchSupabaseTableData();
       })
       .subscribe();

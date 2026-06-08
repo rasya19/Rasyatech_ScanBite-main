@@ -330,6 +330,34 @@ export default function Admin({ onNavigate }: AdminProps) {
     return false;
   };
 
+  const clearTableStatusInSupabase = async (tableNumber: string) => {
+    if (!supabase) throw new Error('Supabase client is not available.');
+
+    const formattedTable = normalizeTableNumber(tableNumber);
+    if (!formattedTable) throw new Error('Nomor meja tidak valid.');
+
+    const normalTable = parseInt(formattedTable, 10).toString();
+    const tableNumberCandidates = Array.from(new Set([
+      formattedTable,
+      normalTable,
+      `Meja ${formattedTable}`,
+      `Meja ${normalTable}`
+    ]));
+
+    const { data, error } = await supabase
+      .from('sb_tables')
+      .update({ status: 'KOSONG', session_id: null, nama_pelanggan: '-' })
+      .in('table_number', tableNumberCandidates)
+      .select('id, table_number, status');
+
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error(`Tidak ada baris sb_tables yang cocok untuk table_number: ${tableNumberCandidates.join(', ')}`);
+    }
+
+    return data;
+  };
+
   const markTableAsEatingLocally = (order?: CafeOrder | null) => {
     if (!order) return;
 
@@ -1227,41 +1255,51 @@ export default function Admin({ onNavigate }: AdminProps) {
     }
     
     const formattedMeja = finalTableNum.replace('Meja ', '').trim().padStart(2, '0');
+    const normalMejaNum = parseInt(formattedMeja, 10).toString();
+    const matchingTableNumbers = [formattedMeja, normalMejaNum, `Meja ${formattedMeja}`, `Meja ${normalMejaNum}`];
     
     if (supabase) {
       try {
         // 1. Complete orders using the canonical order status column only.
         if (orderId && !orderId.startsWith('sess-')) {
           const { error: orderError } = await supabase.from('sb_orders').update({ status: 'completed' }).eq('id', orderId);
-          if (orderError) {
-            console.error("DITOLAK SUPABASE KARENA:", orderError);
-          }
-        } else {
-          // If we only have table number or fake ID, complete all active & non-completed orders for this table
-          const normalNum = parseInt(formattedMeja).toString();
-          const { error: orderError } = await supabase.from('sb_orders').update({ status: 'completed' })
-            .in('table_number', [formattedMeja, normalNum, `Meja ${formattedMeja}`, `Meja ${normalNum}`])
-            .neq('status', 'completed');
-          if (orderError) {
-            console.error("DITOLAK SUPABASE KARENA:", orderError);
-          }
+          if (orderError) throw orderError;
         }
 
-        // 2. IMPORTANT: Update the table status in Supabase sb_tables safely across potential column schemas
-        const normalMejaNum = parseInt(formattedMeja).toString();
-        const possibleColumns = ['table_number', 'nomor_meja', 'nomor_meja_id', 'id'];
-        for (const col of possibleColumns) {
+        // Always complete every active order for the table so no stale row re-marks it occupied after re-fetch.
+        const { error: tableOrdersError } = await supabase.from('sb_orders').update({ status: 'completed' })
+          .in('table_number', matchingTableNumbers)
+          .neq('status', 'completed');
+        if (tableOrdersError) throw tableOrdersError;
+
+        // 2. Update and verify the physical table row. This must match table_number, not a mixed-type id.
+        const updatedTables = await clearTableStatusInSupabase(formattedMeja);
+        console.log('✅ Table status updated in sb_tables:', updatedTables);
+
+        setOrders(prev => prev.map(o => 
+          (o.id === orderId || (isSameTableNumber(o.tableNumber, formattedMeja) && o.status !== 'completed'))
+            ? { ...o, status: 'completed', paymentStatus: 'paid' }
+            : o
+        ));
+        setTablesData(prev => prev.map(t => 
+          isSameTableNumber(t.nomor_meja_id, formattedMeja)
+            ? { ...t, status: 'KOSONG', session_id: null, nama_pelanggan: '-' }
+            : t
+        ));
+
+        const savedDetails = localStorage.getItem('scanbite_tables_details');
+        if (savedDetails) {
           try {
-            const { error: updErr } = await supabase
-              .from('sb_tables')
-              .update({ status: 'KOSONG', session_id: null, nama_pelanggan: '-' })
-              .in(col, [formattedMeja, normalMejaNum, `Meja ${formattedMeja}`, `Meja ${normalMejaNum}`]);
-            
-            if (!updErr) {
-              console.log(`✅ Table status updated in sb_tables matching column ${col}`);
-              break;
-            }
-          } catch (_) {}
+            const parsed = JSON.parse(savedDetails);
+            const updated = parsed.map((t: any) =>
+              isSameTableNumber(t.nomor_meja_id, formattedMeja)
+                ? { ...t, status: 'KOSONG', session_id: null, nama_pelanggan: '-' }
+                : t
+            );
+            localStorage.setItem('scanbite_tables_details', JSON.stringify(updated));
+          } catch (e) {
+            console.warn('Gagal update cache status meja lokal:', e);
+          }
         }
 
         // 3. Send custom instant broadcast to client-orders-live and checkout-orders-live channels
@@ -1271,7 +1309,7 @@ export default function Admin({ onNavigate }: AdminProps) {
             channel1.send({
               type: 'broadcast',
               event: 'order_updated',
-              payload: { tableNumber: formattedMeja, status: 'completed' }
+              payload: { tableNumber: formattedMeja, status: 'KOSONG' }
             });
           }
         });
@@ -1282,19 +1320,21 @@ export default function Admin({ onNavigate }: AdminProps) {
             channel2.send({
               type: 'broadcast',
               event: 'order_updated',
-              payload: { tableNumber: formattedMeja, status: 'completed' }
+              payload: { tableNumber: formattedMeja, status: 'KOSONG' }
             });
           }
         });
           
-      } catch (err) {
+      } catch (err: any) {
         console.warn('Error clearing table in Supabase:', err);
+        triggerNotification(`❌ Gagal kosongkan Meja ${formattedMeja}: ${err.message || 'Supabase update gagal'}`);
+        return;
       }
     }
 
     // Update local state for orders and table status
     setOrders(prev => prev.map(o => 
-      (o.id === orderId || (o.tableNumber === formattedMeja && o.status !== 'completed'))
+      (o.id === orderId || (isSameTableNumber(o.tableNumber, formattedMeja) && o.status !== 'completed'))
         ? { ...o, status: 'completed', paymentStatus: 'paid' }
         : o
     ));
@@ -1304,7 +1344,7 @@ export default function Admin({ onNavigate }: AdminProps) {
       try {
         const parsed = JSON.parse(savedOrders);
         const updated = parsed.map((o: any) => 
-          (o.id === orderId || (o.table_number === formattedMeja && o.status !== 'completed'))
+          (o.id === orderId || (isSameTableNumber(o.table_number || o.tableNumber, formattedMeja) && o.status !== 'completed'))
             ? { ...o, status: 'completed' }
             : o
         );
@@ -1313,7 +1353,7 @@ export default function Admin({ onNavigate }: AdminProps) {
     }
 
     setTablesData(prev => prev.map(t => 
-      t.nomor_meja_id === formattedMeja
+      isSameTableNumber(t.nomor_meja_id, formattedMeja)
         ? { ...t, status: 'KOSONG', session_id: null, nama_pelanggan: '-' }
         : t
     ));
