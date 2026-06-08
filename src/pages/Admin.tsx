@@ -346,7 +346,7 @@ export default function Admin({ onNavigate }: AdminProps) {
 
     const { data, error } = await supabase
       .from('sb_tables')
-      .update({ status: 'KOSONG', session_id: null, nama_pelanggan: '-' })
+      .update({ status: 'KOSONG', session_id: null })
       .in('table_number', tableNumberCandidates)
       .select('id, table_number, status');
 
